@@ -10,6 +10,7 @@
   python tools/analyze.py 报文.blf --model A05大陆 --sig ESP_VehicleSpeed IBCU_BrkSysFltLamp \\
          [--csv 输出.csv] [--plot 输出.png] [--t0 1.5 --t1 3]           # 信号统计 / 导出 / 画图
   python tools/analyze.py 报文.blf --dbc CIIA1.5_EV                       # 不指定车型，直接用某个 DBC
+  python tools/analyze.py 报文.blf --model A05大陆 --trace 700-7FF [--t0 --t1] # 报文列表（同网页“报文提取”），诊断报文附解释
 """
 import argparse, glob, io, json, os, struct, sys
 from collections import Counter, OrderedDict
@@ -210,6 +211,61 @@ def suspects(frames, idx, db):
     return sorted(out)
 
 
+# ---------- 报文列表 ----------
+UDS = json.load(open(os.path.join(ROOT, 'tools', 'uds.json'), encoding='utf-8'))
+
+
+def uds_brief(p):
+    """诊断报文简要解释（完整解释见网页 canlog.js 的 udsExplain，规则表共用 tools/uds.json）"""
+    if not p:
+        return ''
+    sv = UDS['services']
+    if p[0] == 0x7F and len(p) >= 3:
+        n = UDS['nrc'].get(f'{p[2]:02X}', ['未定义的否定码', ''])
+        return f"否定响应：0x{p[1]:02X} {sv.get(f'{p[1]:02X}', '')} 被拒，NRC 0x{p[2]:02X} {n[0]}" + (f'（{n[1]}）' if n[1] else '')
+    k = f'{p[0]:02X}'
+    if k in sv:
+        return f'请求 0x{k} {sv[k]}'
+    if f'{p[0] - 0x40:02X}' in sv:
+        return f"正响应 0x{p[0] - 0x40:02X} {sv[f'{p[0] - 0x40:02X}']}"
+    return ''
+
+
+def trace(frames, idx, db, a):
+    import re
+    names = {msg_key(m): m['name'] for m in db['msgs']} if db else {}
+    keep = None
+    if a.trace:
+        keep = set()
+        for k in idx:
+            raw, nm = k & 0x1FFFFFFF, names.get(k, '').lower()
+            for t in a.trace:
+                r = re.fullmatch(r'(?:0x)?([0-9a-f]+)-(?:0x)?([0-9a-f]+)', t, re.I)
+                h = re.fullmatch(r'(?:0x)?([0-9a-f]+)x?', t, re.I)
+                if (r and int(r[1], 16) <= raw <= int(r[2], 16)) or (h and raw == int(h[1], 16)) or (nm and t.lower() in nm):
+                    keep.add(k)
+    done = {}
+    for t, k, p in isotp(frames, idx):
+        done.setdefault(k, []).append((t, p))
+    print('\n# 报文列表')
+    n = 0
+    for t, k, ch, d, fd in frames:
+        if keep is not None and k not in keep:
+            continue
+        if (a.t0 is not None and t < a.t0) or (a.t1 is not None and t > a.t1):
+            continue
+        line = f"{t:11.6f}  CAN{(ch or 0) + 1}  0x{k & 0x1FFFFFFF:X}{'x' if k & EXT else ''}  {names.get(k, ''):<16} {len(d):>2}{' FD' if fd else '   '}  {d.hex(' ').upper()}"
+        if is_diag(k):
+            hit = next((p for tt, p in done.get(k, []) if abs(tt - t) < 1e-9), None)
+            if hit is not None:
+                line += f"   ← {hit.hex(' ').upper() if len(hit) > len(d) - 1 else ''} {uds_brief(hit)}"
+        print(line)
+        n += 1
+        if n >= a.limit:
+            print(f'…（只显示前 {a.limit} 行，用 --limit 调整）')
+            break
+
+
 # ---------- 数据 ----------
 def load_data(key):
     src = os.path.join(ROOT, 'source')
@@ -238,6 +294,8 @@ def main():
     ap.add_argument('--sig', nargs='+', metavar='信号', help='输出这些信号的统计和变化')
     ap.add_argument('--t0', type=float, default=None)
     ap.add_argument('--t1', type=float, default=None)
+    ap.add_argument('--trace', nargs='*', metavar='ID', help='列出报文：ID / 范围 700-7FF / 报文名，不填为全部')
+    ap.add_argument('--limit', type=int, default=500, help='--trace 最多输出行数')
     ap.add_argument('--csv', help='把 --sig 的信号导出为 CSV')
     ap.add_argument('--plot', help='把 --sig 的信号画成 PNG（每个信号一个子图）')
     a = ap.parse_args()
@@ -277,6 +335,10 @@ def main():
             text = (s['n'] + ' ' + m['name'] + ' ' + s.get('c', '')).lower()
             if all(w.lower() in text for w in a.find):
                 print(f"- {s['n']} [{s['u']}]  报文 {m['name']}（{len(idx.get(msg_key(m), []))} 帧）  {s.get('c', '')[:60]!r}")
+        return
+
+    if a.trace is not None:
+        trace(frames, idx, db, a)
         return
 
     if a.sig:

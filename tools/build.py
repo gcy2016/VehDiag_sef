@@ -117,7 +117,8 @@ def page(mode):
     for name in ('canlog', 'plot'):
         js = open(os.path.join(ROOT, 'tools', 'web', name + '.js'), encoding='utf-8').read()
         html = html.replace(f'/*__{name.upper()}_JS__*/', js)
-    return html
+    uds = json.load(open(os.path.join(ROOT, 'tools', 'uds.json'), encoding='utf-8'))
+    return html.replace('/*__UDS_JSON__*/null', json.dumps(uds, ensure_ascii=False, separators=(',', ':')))
 
 
 def main():
