@@ -169,7 +169,8 @@
       <div class="card">
         <div class="step"><div class="num">3</div><h2>打开报文</h2><span class="cur" id="dbcCur"></span></div>
         <label class="drop" id="drop">
-          <input type="file" id="file" accept=".blf,.asc" hidden>
+          <!-- 不设 accept：iOS 不认识 .blf 扩展名，会把文件置灰无法选择；扩展名在读取时检查 -->
+          <input type="file" id="file" hidden>
           📂 点击选择或拖入 <b>.blf</b> / <b>.asc</b> 报文文件<br><small>文件只在本机浏览器内解析，不会上传</small>
         </label>
         <div class="bar" id="bar" hidden><div></div></div>
@@ -1064,7 +1065,7 @@ $('hinc').onclick = () => { plotH = plot.geom().H * 1.25; plot.setHeight(plotH);
 $('hdec').onclick = () => { plotH = Math.max(200, plot.geom().H / 1.25); plot.setHeight(plotH); };
 $('clr').onclick = () => { SIGS = []; renderSigs(); };
 
-$('file').addEventListener('change', e => openFile(e.target.files[0]));
+$('file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
 const drop = $('drop');
 ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
