@@ -239,7 +239,7 @@ const CanLog = (() => {
   const statusText = st => STATUS_BITS.filter((_, i) => st & (1 << i)).join('、') || '无';
   const isDiagId = id => (!(id & EXT) && id >= 0x700 && id <= 0x7FF) || ((id & EXT) && ((id & 0x1FFF0000) >>> 16) === 0x18DA);
 
-  // ISO-TP 重组 → [{t, id, ch, p: Uint8Array}]
+  // ISO-TP 重组 → [{t, id, ch, p: Uint8Array, fi: [组成它的帧序号]}]
   function isotp(fr) {
     const out = [], st = new Map();
     for (const [id, idx] of fr.byId) {
@@ -251,7 +251,7 @@ const CanLog = (() => {
         if (type === 0) {
           let n = d[0] & 15, s = 1;
           if (n === 0 && d.length > 8) { n = d[1]; s = 2; }
-          if (n && s + n <= d.length) out.push({ t: fr.t[i], id, ch: fr.ch[i], p: d.slice(s, s + n) });
+          if (n && s + n <= d.length) out.push({ t: fr.t[i], id, ch: fr.ch[i], p: d.slice(s, s + n), fi: [i] });
           st.delete(key);
         } else if (type === 1) {
           let n = ((d[0] & 15) << 8) | d[1], s = 2;
@@ -259,15 +259,15 @@ const CanLog = (() => {
           if (n > 0 && n < 1 << 20) {
             const buf = new Uint8Array(n), k = Math.min(n, d.length - s);
             buf.set(d.subarray(s, s + k));
-            st.set(key, { t: fr.t[i], buf, got: k, sn: 1 });
+            st.set(key, { t: fr.t[i], buf, got: k, sn: 1, fi: [i] });
           }
         } else if (type === 2) {
           const x = st.get(key);
           if (!x) continue;
           if ((d[0] & 15) !== (x.sn & 15)) { st.delete(key); continue; }
           const k = Math.min(x.buf.length - x.got, d.length - 1);
-          x.buf.set(d.subarray(1, 1 + k), x.got); x.got += k; x.sn++;
-          if (x.got >= x.buf.length) { out.push({ t: x.t, id, ch: fr.ch[i], p: x.buf }); st.delete(key); }
+          x.buf.set(d.subarray(1, 1 + k), x.got); x.got += k; x.sn++; x.fi.push(i);
+          if (x.got >= x.buf.length) { out.push({ t: x.t, id, ch: fr.ch[i], p: x.buf, fi: x.fi }); st.delete(key); }
         }
       }
     }
@@ -350,6 +350,97 @@ const CanLog = (() => {
     return out.sort((a, b) => a.t - b.t);
   }
 
-  return { Frames, read, readBLF, readASC, rawValue, decodeSignal, isotp, findDTCs, suspects, dtcText, statusText, EXT };
+  // ---- 通用诊断知识：单帧解释 ----
+  const H = b => hex2(b);
+  const hexs = (u8, a = 0, b = u8.length) => Array.from(u8.subarray(a, b), H).join(' ');
+  function tpFrame(d) {
+    if (!d.length) return '';
+    const t = d[0] >> 4;
+    if (t === 0) { const n = (d[0] & 15) || (d.length > 8 ? d[1] : 0); return `单帧（SF），有效数据 ${n} 字节`; }
+    if (t === 1) { const n = ((d[0] & 15) << 8) | d[1]; return `首帧（FF），整条报文共 ${n || ((d[2] << 24) | (d[3] << 16) | (d[4] << 8) | d[5]) >>> 0} 字节，后面还有连续帧`; }
+    if (t === 2) return `连续帧（CF），序号 ${d[0] & 15}`;
+    if (t === 3) {
+      const fs = ['继续发送（CTS）', '等待（Wait）', '溢出（Overflow），接收方缓存不足'][d[0] & 15] || '未知';
+      const st = d[2] <= 0x7F ? d[2] + ' ms' : (d[2] >= 0xF1 && d[2] <= 0xF9 ? (d[2] - 0xF0) * 100 + ' µs' : '保留值');
+      return `流控帧（FC）：${fs}，块大小 ${d[1] || '不限'}，最小间隔 ${st}`;
+    }
+    return '不是 ISO-TP 诊断帧格式';
+  }
+
+  // 解释一条完整的 UDS 报文（已重组）；U 为 tools/uds.json。返回若干行文字
+  function udsExplain(p, U) {
+    if (!p || !p.length || !U) return [];
+    const k = H(p[0]), out = [], name = x => U.services[x] || '未知服务';
+    const sub = (tbl, b) => (tbl[H(b & 0x7F)] || '子功能 0x' + H(b & 0x7F)) + (b & 0x80 ? '（抑制正响应）' : '');
+    const did = (a, b) => { const x = H(a) + H(b); return `0x${x}${U.dids[x] ? ' ' + U.dids[x] : ''}`; };
+    const ascii = u8 => { const s = String.fromCharCode(...u8); return /^[\x20-\x7E]+$/.test(s.replace(/\x00+$/, '')) ? s.replace(/\x00+$/, '') : ''; };
+    if (p[0] === 0x7F) {
+      const n = U.nrc[H(p[2])] || ['未定义的否定码', ''];
+      out.push(`❌ 否定响应：服务 0x${H(p[1])} ${name(H(p[1]))} 被拒绝`);
+      out.push(`否定码 NRC 0x${H(p[2])}：${n[0]}`);
+      if (n[1]) out.push('说明：' + n[1]);
+      return out;
+    }
+    let req = true, sid = k;
+    if (!U.services[k] && U.services[H(p[0] - 0x40)]) { req = false; sid = H(p[0] - 0x40); }
+    if (!U.services[sid]) return [`首字节 0x${k} 不是常见的 UDS 服务`];
+    out.push((req ? '➡️ 请求：' : '✅ 正响应：') + `0x${sid} ${name(sid)}`);
+    const b1 = p[1];
+    switch (sid) {
+      case '10':
+        if (p.length > 1) out.push('会话：' + sub(U.sessions, b1));
+        if (!req && p.length >= 6) out.push(`P2 = ${(p[2] << 8 | p[3])} ms，P2* = ${(p[4] << 8 | p[5]) * 10} ms`);
+        break;
+      case '11': if (p.length > 1) out.push('复位类型：' + sub(U.resets, b1)); break;
+      case '14': if (req && p.length >= 4) out.push('故障码组：' + (p[1] === 0xFF && p[2] === 0xFF && p[3] === 0xFF ? 'FFFFFF 全部故障码' : hexs(p, 1, 4))); break;
+      case '19': {
+        if (p.length > 1) out.push('子功能：' + sub(U.dtcSub, b1));
+        if (req && [0x02, 0x0A, 0x0F, 0x13, 0x15, 0x17].includes(b1 & 0x7F) && p.length > 2) out.push(`状态掩码 0x${H(p[p.length - 1])}：${statusText(p[p.length - 1])}`);
+        if (req && [0x04, 0x06].includes(b1) && p.length >= 6) out.push(`故障码 ${dtcText(p[2], p[3], p[4])}，记录号 0x${H(p[5])}`);
+        if (!req && [0x02, 0x0A, 0x0F, 0x13, 0x15].includes(b1)) {
+          out.push(`ECU 支持的状态位 0x${H(p[2])}，共 ${Math.max(0, (p.length - 3) >> 2)} 个故障码：`);
+          for (let i = 3; i + 4 <= p.length; i += 4) out.push(`  ${dtcText(p[i], p[i + 1], p[i + 2])}（${hexs(p, i, i + 3)}）状态 0x${H(p[i + 3])}：${statusText(p[i + 3])}`);
+        }
+        if (!req && b1 === 0x01 && p.length >= 6) out.push(`符合条件的故障码数量：${p[4] << 8 | p[5]}`);
+        if (!req && [0x04, 0x06].includes(b1) && p.length >= 6) out.push(`故障码 ${dtcText(p[2], p[3], p[4])} 状态 0x${H(p[5])}：${statusText(p[5])}；后续为快照 / 扩展数据：${hexs(p, 6)}`);
+        break;
+      }
+      case '22':
+        if (req) for (let i = 1; i + 2 <= p.length; i += 2) out.push('读取 ' + did(p[i], p[i + 1]));
+        else if (p.length >= 3) {
+          out.push('数据标识符 ' + did(p[1], p[2]));
+          const data = p.subarray(3), a = ascii(data);
+          out.push('数据：' + hexs(data) + (a ? `（ASCII：${a}）` : ''));
+          if (H(p[1]) + H(p[2]) === 'F186' && data.length) out.push('当前会话：' + (U.sessions[H(data[0])] || '0x' + H(data[0])));
+        }
+        break;
+      case '2E':
+        if (p.length >= 3) out.push('数据标识符 ' + did(p[1], p[2]));
+        if (req && p.length > 3) { const a = ascii(p.subarray(3)); out.push('写入：' + hexs(p, 3) + (a ? `（ASCII：${a}）` : '')); }
+        break;
+      case '27':
+        if (p.length > 1) out.push(`安全等级 ${(b1 + 1) >> 1}：` + (b1 & 1 ? (req ? '请求种子（Seed）' : '返回种子 ' + hexs(p, 2) + (p.subarray(2).every(x => !x) ? '（全 0 表示已解锁）' : '')) : (req ? '发送密钥（Key）' + hexs(p, 2) : '密钥正确，已解锁')));
+        break;
+      case '28':
+        if (p.length > 1) out.push('控制方式：' + sub(U.commCtrl, b1));
+        if (req && p.length > 2) out.push('报文类型：' + (U.commType[H(p[2] & 3)] || '0x' + H(p[2])));
+        break;
+      case '2F':
+        if (p.length >= 3) out.push('数据标识符 ' + did(p[1], p[2]));
+        if (p.length > 3) out.push('控制参数：' + (U.ioCtrl[H(p[3])] || '0x' + H(p[3])) + (p.length > 4 ? '，数据 ' + hexs(p, 4) : ''));
+        break;
+      case '31':
+        if (p.length > 1) out.push(sub(U.routineSub, b1));
+        if (p.length >= 4) out.push(`例程 ID 0x${H(p[2])}${H(p[3])}` + (p.length > 4 ? `，${req ? '参数' : '结果'} ${hexs(p, 4)}` : ''));
+        break;
+      case '3E': out.push(b1 & 0x80 ? '保持会话（不需要应答）' : '保持会话'); break;
+      case '85': if (p.length > 1) out.push(sub(U.dtcSetting, b1)); break;
+      case '34': case '35': if (!req && p.length > 2) out.push('ECU 每块最多接收 ' + parseInt(hexs(p, 2).replace(/ /g, '') || '0', 16) + ' 字节'); break;
+      case '36': if (p.length > 1) out.push(`块序号 ${b1}` + (req ? `，数据 ${p.length - 2} 字节` : '')); break;
+    }
+    return out;
+  }
+
+  return { Frames, read, readBLF, readASC, rawValue, decodeSignal, isotp, findDTCs, suspects, dtcText, statusText, tpFrame, udsExplain, isDiagId, EXT };
 })();
 if (typeof module !== 'undefined') module.exports = CanLog;

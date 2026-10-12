@@ -18,6 +18,7 @@
   - 列出“故障 / 报警 / 无效”取值的疑似异常信号
   - 按 DBC 画信号曲线：每个信号一条泳道、各自 Y 轴，上下均分；滚轮/双指缩放、拖动平移、双击复位，悬停看数值
   - 报文和别的 DBC 更匹配时会提示车型可能选错，也可以手动换 DBC
+  - 报文提取（类似 CANalyzer Trace）：按 ID / 范围 / 报文名筛选；点选一行，DBC 报文显示各信号值，诊断报文说明 ISO-TP 帧类型并按通用诊断知识解释完整请求 / 应答（如 7F 负响应的否定码含义），知识表在 `tools/uds.json`
 
 车型与 DBC 的对应见 `tools/dbc_map.json`：
 
@@ -55,6 +56,7 @@ Excel 里新增的英文描述，在 `tools/zh_map.json` 里补一条“英文: 
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利                    # 概况、故障码（对照问卷）、疑似异常信号
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --find 轮速        # 搜索信号
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --sig ESP_VehicleSpeed --plot 曲线.png --csv 数据.csv
+python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --trace 700-7FF          # 报文列表，诊断报文附解释
 ```
 
 ## 发布
