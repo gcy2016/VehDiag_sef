@@ -166,6 +166,8 @@ const AI = (() => {
   .ai.full .note[data-f="tip"] { display: none; }
   .ai.full details.ctx textarea { height: 26vh; }
   .ai.full .cfg { max-height: 50vh; overflow-y: auto; }
+  /* 手机：输入框字号不小于 16px，否则 iOS 点进输入框会自动放大整个页面，之后页面能左右拖动 */
+  @media (max-width: 899px) { .ai textarea, .ai input, .ai select { font-size: 16px !important; } }
   /* 电脑上：居中大窗口，背后变暗；手机上仍铺满屏幕 */
   @media (min-width: 900px) {
     .ai.full { inset: 4vh auto; left: 50%; transform: translateX(-50%); width: min(960px, 92vw); border-radius: 16px;

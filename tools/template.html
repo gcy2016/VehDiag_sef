@@ -17,6 +17,8 @@
   html { overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { overflow-x: clip; }
   .wrap { overflow-wrap: anywhere; }   /* 超长的信号名 / 数据在屏幕内自动换行 */
+  /* 手机：输入框字号不小于 16px，否则 iOS 点进输入框会自动放大整个页面，之后页面能左右拖动 */
+  @media (max-width: 899px) { .tf input, input.sq, select { font-size: 16px !important; } }
   body { margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
   .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
