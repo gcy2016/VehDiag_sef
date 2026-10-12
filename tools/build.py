@@ -114,7 +114,7 @@ def page(mode):
     if mode == 'pub':     # 公开版沿用原页面
         return open(os.path.join(ROOT, 'tools', 'template_pub.html'), encoding='utf-8').read().replace('__MODE__', mode)
     html = open(os.path.join(ROOT, 'tools', 'template.html'), encoding='utf-8').read()
-    for name in ('canlog', 'plot'):
+    for name in ('canlog', 'plot', 'ai'):
         js = open(os.path.join(ROOT, 'tools', 'web', name + '.js'), encoding='utf-8').read()
         html = html.replace(f'/*__{name.upper()}_JS__*/', js)
     uds = json.load(open(os.path.join(ROOT, 'tools', 'uds.json'), encoding='utf-8'))
