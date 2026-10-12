@@ -182,6 +182,8 @@ const AI = (() => {
   .ai-modal button { min-width: 84px; height: 38px; font-size: 15px; border-radius: 10px; cursor: pointer; }
   .ai-modal button.b { border: 1.5px solid var(--line, #d5dde8); background: #fff; color: var(--blue-d, #22507f); }
   .ai-modal button.p { border: 0; background: var(--blue, #2a6db5); color: #fff; }
+  .ai-modal textarea.mc { width: 100%; height: 40vh; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; border: 1.5px solid var(--line, #d5dde8); border-radius: 10px; padding: 8px; margin-bottom: 12px; }
+  @media (max-width: 899px) { .ai-modal textarea.mc { font-size: 16px; } }
   .ai .toast { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); background: rgba(31,41,55,.92); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 1001; }
   .ai button.b { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
   .ai button.p { border: 0; background: var(--blue); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 15px; cursor: pointer; }
@@ -303,31 +305,56 @@ const AI = (() => {
     $f('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
     tip();
     // 页面上的“复制给 AI 助手”按钮：按当前页面整理数据（含选取的报文）→ 复制到剪贴板，并附带到 AI 助手、打开聊天。
-    // 本次打开网页后第一次复制时询问是否按提问模板（身份设定 + 数据 + 问题）复制；之后只复制内容，不再询问
+    // 本次打开网页后第一次复制时询问是否按提问模板（身份设定 + 数据 + 问题）复制；之后只复制内容，不再询问。
+    // 复制必须在用户点按的那一下同步完成（浏览器只在用户操作时允许写剪贴板），所以在按钮 / 弹窗按钮的点击里直接复制。
     let asked = false;
-    const ask = () => new Promise(done => {
+    const modal = (html, onClick) => {
       const m = document.createElement('div');
       m.className = 'ai-modal';
-      m.innerHTML = `<div class="box"><b>是否按提问模板复制？</b>
-        <p>选“是”：开头附带诊断工程师的身份和回答要求、末尾留出问题，适合直接粘贴到其他 AI 提问。<br>选“否”：只复制选取的报文 / 数据。<br>本次打开网页只问这一次，之后都只复制内容。</p>
-        <div class="row"><button class="b" data-v="0">否</button><button class="p" data-v="1">是</button></div></div>`;
-      m.onclick = e => { const v = e.target.dataset.v; if (v === undefined) return; m.remove(); done(v === '1'); };
+      m.innerHTML = `<div class="box">${html}</div>`;
+      m.onclick = e => { const v = e.target.dataset.v; if (v === undefined) return; m.remove(); onClick(v); };
       document.body.appendChild(m);
-    });
-    async function takeData() {
+      return m;
+    };
+    // 老方法：临时文本框选中后 execCommand('copy')，UC / 部分国产浏览器只认这种
+    function legacyCopy(text) {
+      const t = document.createElement('textarea');
+      t.value = text;
+      t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0';
+      document.body.appendChild(t);
+      t.select();
+      t.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      t.remove();
+      return ok;
+    }
+    // 两种方法都失败：显示内容并全选，让用户长按复制
+    function manualCopy(text, then) {
+      const m = modal(`<b>浏览器不允许自动复制</b><p>请长按下方文字 → 全选 → 复制，然后点“好了”。</p>
+        <textarea readonly class="mc">${esc(text)}</textarea><div class="row"><button class="p" data-v="1">好了</button></div>`, then);
+      const t = m.querySelector('textarea');
+      setTimeout(() => { t.focus(); t.select(); t.setSelectionRange(0, text.length); }, 50);
+    }
+    // 依次尝试：新方法（Clipboard API，苹果 / Chrome 正常）→ 老方法 → 显示全选框手动复制
+    function copyText(text, then) {           // then(ok)：ok=true 已复制；false 走了手动复制
+      const fallback = () => legacyCopy(text) ? then(true) : manualCopy(text, () => then(false));
+      let p = null;
+      try { if (navigator.clipboard && window.isSecureContext) p = navigator.clipboard.writeText(text); } catch (e) {}
+      if (p) p.then(() => then(true), fallback); else fallback();
+    }
+    function takeData() {
       refresh();
       $f('use').checked = true;
       const data = $f('ctx').value;
-      let text = data;
-      if (!asked) {
-        asked = true;
-        if (await ask()) text = SYSTEM + '\n\n【当前数据】\n' + data + '\n\n【问题】\n（请在这里写下你的问题）';
-      }
-      let ok = true;
-      try { await navigator.clipboard.writeText(text); } catch (e) { ok = false; }
-      full(true);
-      $f('q').focus();
-      toast(ok ? '已复制，并已附带到 AI 助手' : '已附带到 AI 助手（浏览器不允许自动复制）');
+      const done = ok => { full(true); $f('q').focus(); toast(ok ? '已复制，并已附带到 AI 助手' : '已附带到 AI 助手'); };
+      if (asked) return copyText(data, done);
+      asked = true;
+      modal(`<b>是否按提问模板复制？</b>
+        <p>选“是”：开头附带诊断工程师的身份和回答要求、末尾留出问题，适合直接粘贴到其他 AI 提问。<br>选“否”：只复制选取的报文 / 数据。<br>本次打开网页只问这一次，之后都只复制内容。</p>
+        <div class="row"><button class="b" data-v="0">否</button><button class="p" data-v="1">是</button></div>`,
+        v => copyText(v === '1' ? SYSTEM + '\n\n【当前数据】\n' + data + '\n\n【问题】\n（请在这里写下你的问题）' : data, done));
     }
     return { takeData, full };
   }
