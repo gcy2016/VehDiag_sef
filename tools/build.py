@@ -1,4 +1,4 @@
-"""从 source/*.enc（加密的原始 Excel）生成 DTC 查询网页。
+"""从 source/*.enc（加密的原始 Excel、DBC）生成 DTC 查询 / 报文分析网页。
 
 仓库是公开的，原始文件只以密文存放（source/*.enc），明文不进仓库。
 两个密码：
@@ -13,9 +13,11 @@
 
 每个 Sheet 名即车型；读取 显示码 / 高中字节 / 低字节 / 故障描述 / 可能原因 / 维修建议。
 “描述”栏若为英文，按 tools/zh_map.json 译成中文，原文保留为 *_en。
+DBC（source/*.dbc.enc）按 tools/dbc_map.json 挂到各车型，只进加密版；公开版不含 DBC 和报文分析。
 """
-import argparse, base64, glob, io, json, os, re, secrets
+import argparse, base64, glob, gzip, io, json, os, re, secrets
 import openpyxl
+import dbc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CJK = re.compile('[一-鿿]')
@@ -78,11 +80,12 @@ def derive(password: str, salt: bytes) -> bytes:
 
 
 def encrypt(data: bytes, pin: str):
-    """网站数据：JSON 格式，浏览器端 WebCrypto 解密。"""
+    """网站数据：JSON 先 gzip 再加密（v=2），浏览器端 WebCrypto 解密后解压。"""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     salt, iv = secrets.token_bytes(16), secrets.token_bytes(12)
     b64 = lambda b: base64.b64encode(b).decode()
-    return {'v': 1, 'iter': PBKDF2_ITER, 'salt': b64(salt), 'iv': b64(iv),
+    data = gzip.compress(data, 9, mtime=0)
+    return {'v': 2, 'iter': PBKDF2_ITER, 'salt': b64(salt), 'iv': b64(iv),
             'ct': b64(AESGCM(derive(pin, salt)).encrypt(iv, data, None))}
 
 
@@ -108,8 +111,13 @@ def open_file(blob: bytes, key: str) -> bytes:
 
 
 def page(mode):
+    if mode == 'pub':     # 公开版沿用原页面
+        return open(os.path.join(ROOT, 'tools', 'template_pub.html'), encoding='utf-8').read().replace('__MODE__', mode)
     html = open(os.path.join(ROOT, 'tools', 'template.html'), encoding='utf-8').read()
-    return html.replace('__MODE__', mode)
+    for name in ('canlog', 'plot'):
+        js = open(os.path.join(ROOT, 'tools', 'web', name + '.js'), encoding='utf-8').read()
+        html = html.replace(f'/*__{name.upper()}_JS__*/', js)
+    return html
 
 
 def main():
@@ -146,11 +154,24 @@ def main():
     payload = json.dumps({'models': models}, ensure_ascii=False, separators=(',', ':'))
     print('车型：', ', '.join(f"{m['model']}({len(m['items'])})" for m in models))
 
+    dbcs = {}
+    for f in sorted(glob.glob(os.path.join(src, '*.dbc.enc'))):
+        name = os.path.basename(f)[:-8]
+        dbcs[name] = dbc.load_bytes(open_file(open(f, 'rb').read(), a.src_key), name)
+        print('DBC：', name, len(dbcs[name]['msgs']), '帧', sum(len(m['sigs']) for m in dbcs[name]['msgs']), '信号')
+    dbc_map = json.load(open(os.path.join(ROOT, 'tools', 'dbc_map.json'), encoding='utf-8'))
+    for m in models:
+        if dbc_map.get(m['model']) in dbcs:
+            m['dbc'] = dbc_map[m['model']]
+        else:
+            print('⚠ 车型没有对应的 DBC：', m['model'])
+    sef_payload = json.dumps({'models': models, 'dbcs': dbcs}, ensure_ascii=False, separators=(',', ':'))
+
     if a.pin:
         assert re.fullmatch(r'\d{6}', a.pin), '密码必须是 6 位数字'
         out = os.path.join(ROOT, 'docs')
         os.makedirs(out, exist_ok=True)
-        json.dump(encrypt(payload.encode(), a.pin), open(os.path.join(out, 'data.enc.json'), 'w'))
+        json.dump(encrypt(sef_payload.encode(), a.pin), open(os.path.join(out, 'data.enc.json'), 'w'))
         open(os.path.join(out, 'index.html'), 'w', encoding='utf-8').write(page('sef'))
         open(os.path.join(out, '.nojekyll'), 'w').close()
         print('已生成加密版', out)
