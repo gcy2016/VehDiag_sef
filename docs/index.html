@@ -4,37 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>制动控制模块 DTC 查询</title>
+<title>售后诊断助手</title>
 <style>
   :root {
     --bg: #f2f4f7; --card: #fff; --text: #1f2937; --muted: #6b7280;
     --blue: #2a6db5; --blue-d: #22507f; --blue-l: #e8f0fa; --line: #d5dde8;
     --green: #0fbf5f; --tip-bg: #eef8ef; --tip-line: #bfe3c4; --red: #d93025;
+    --warn-bg: #fff6e5; --warn-line: #f3d18b;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
   .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+  body.wide .wrap { max-width: 1280px; }
   .hero { background: linear-gradient(135deg, var(--blue-d), var(--blue)); color: #fff;
     border-radius: 16px; padding: 20px 20px 18px; margin-bottom: 14px; }
   .hero h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .5px; }
   .hero p { margin: 0; opacity: .88; font-size: 14px; }
   .tag { display: inline-block; background: rgba(255,255,255,.2); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 6px; vertical-align: 3px; }
   .card { background: var(--card); border-radius: 16px; padding: 18px 16px; margin-bottom: 14px; }
-  .step { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .step { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .num { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: #fff;
     display: grid; place-items: center; font-weight: 700; flex: none; }
   .step h2 { margin: 0; font-size: 18px; }
   .step .cur { margin-left: auto; color: var(--blue); font-size: 14px; }
   .disabled { opacity: .45; pointer-events: none; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .grid button { padding: 14px 6px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff;
     color: var(--blue); font-size: 16px; cursor: pointer; }
   .grid button.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .fns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fns button { padding: 16px 8px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer;
+    color: var(--blue-d); font-size: 17px; font-weight: 600; text-align: center; }
+  .fns button small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .fns button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .fns button.on small { color: rgba(255,255,255,.85); }
   .search { display: flex; gap: 8px; }
   input.q { flex: 1; min-width: 0; font-size: 18px; padding: 12px 14px; border: 1.5px solid var(--line);
     border-radius: 12px; outline: none; text-transform: uppercase; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  input.q:focus { border-color: var(--blue); }
+  input.q:focus, input.sq:focus { border-color: var(--blue); }
   .search button { padding: 0 16px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-size: 16px; }
   .hint { color: var(--muted); font-size: 13px; margin: 8px 2px 0; }
   .msg { color: var(--muted); text-align: center; padding: 10px 0; }
@@ -66,17 +74,56 @@
   .lock input:focus { border-color: var(--blue); }
   .lock .err { color: var(--red); min-height: 24px; margin-top: 8px; font-size: 14px; }
   [hidden] { display: none !important; }
+
+  /* ---- 数据分析 ---- */
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 22px 12px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--blue); background: var(--blue-l); }
+  .drop b { color: var(--blue); }
+  .bar { height: 6px; background: var(--blue-l); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .bar div { height: 100%; width: 0; background: var(--blue); transition: width .2s; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .kv div { background: #f8fafc; border-radius: 10px; padding: 6px 10px; font-size: 14px; }
+  .kv small { display: block; color: var(--muted); font-size: 12px; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 8px 12px; font-size: 14px; margin-top: 10px; }
+  select { font-size: 14px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; }
+  .dtc { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .dtc .h { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+  .dtc .meta { color: var(--muted); font-size: 13px; }
+  .dtc .desc { margin-top: 4px; font-weight: 600; }
+  .dtc details { margin-top: 6px; }
+  .dtc details summary { color: var(--blue); cursor: pointer; font-size: 14px; }
+  .dtc .sec { margin: 8px 0 0; }
+  .ev { font-size: 13px; color: var(--muted); margin: 2px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); border-radius: 999px;
+    padding: 2px 10px; font-size: 13px; background: #fff; cursor: pointer; max-width: 100%; }
+  .chip i { font-style: normal; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip b { color: var(--muted); font-weight: 400; margin-left: 2px; }
+  .chip.sus { border-color: var(--warn-line); background: var(--warn-bg); }
+  .sbox { position: relative; }
+  input.sq { width: 100%; font-size: 15px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; outline: none; }
+  .drop-list { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin-top: 4px; background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; max-height: 340px; overflow: auto; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+  .drop-list div { padding: 6px 12px; cursor: pointer; border-bottom: 1px solid #f1f3f6; font-size: 14px; }
+  .drop-list div:hover, .drop-list div.act { background: var(--blue-l); }
+  .drop-list small { color: var(--muted); display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; align-items: center; }
+  .tools button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
+  .tools button:hover { background: var(--blue-l); }
+  .tools .sp { flex: 1; }
+  .plot { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
-    <h1>🔧 制动控制模块 DTC 查询<span class="tag" id="tag" hidden>内部版</span></h1>
-    <p>售后故障码自助查询 · 数据版本 V1.0</p>
-    <p>👇 按 ①②③ 顺序操作</p>
+    <h1>🔧 售后诊断助手<span class="tag">内部版</span></h1>
+    <p>制动控制模块 DTC 查询 · 报文数据分析</p>
+    <p>👇 先选车型，再选功能</p>
   </div>
 
-  <div class="card lock" id="lock" hidden>
+  <div class="card lock" id="lock">
     <div class="step" style="justify-content:center"><h2>🔒 请输入 6 位访问密码</h2></div>
     <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
     <div class="err" id="pinErr"></div>
@@ -89,55 +136,667 @@
     </div>
 
     <div class="card disabled" id="s2">
-      <div class="step"><div class="num">2</div><h2>输入 DTC 码</h2><span class="cur" id="cur"></span></div>
-      <form class="search" id="form" autocomplete="off">
-        <input class="q" id="q" placeholder="如 U210088 / E10088 / E100" enterkeyhint="search" spellcheck="false">
-        <button type="submit">查询</button>
-      </form>
-      <p class="hint">完整显示码或高中低字节 → 直接定位；只输高中字节 → 列出全部备选。“0x”前缀和空格会自动忽略。</p>
+      <div class="step"><div class="num">2</div><h2>选择功能</h2><span class="cur" id="cur"></span></div>
+      <div class="fns">
+        <button data-v="dtc">🔍 故障码查询<small>输入 DTC 查含义、原因、维修建议</small></button>
+        <button data-v="log">📈 数据分析<small>读取 blf / asc 报文、识别故障码、画曲线</small></button>
+      </div>
     </div>
 
-    <div class="card" id="s3" hidden>
-      <div class="step"><div class="num">3</div><h2 id="s3t">查询结果</h2></div>
-      <div id="out"></div>
+    <!-- 故障码查询 -->
+    <div id="vDtc" hidden>
+      <div class="card">
+        <div class="step"><div class="num">3</div><h2>输入 DTC 码</h2></div>
+        <form class="search" id="form" autocomplete="off">
+          <input class="q" id="q" placeholder="如 U210088 / E10088 / E100" enterkeyhint="search" spellcheck="false">
+          <button type="submit">查询</button>
+        </form>
+        <p class="hint">完整显示码或高中低字节 → 直接定位；只输高中字节 → 列出全部备选。“0x”前缀和空格会自动忽略。</p>
+      </div>
+      <div class="card" id="s3" hidden>
+        <div class="step"><div class="num">4</div><h2 id="s3t">查询结果</h2></div>
+        <div id="out"></div>
+      </div>
+      <div class="tip">💡 维修前请先确认车型与故障码对应正确</div>
+      <div class="notes">
+        <p>⚠️ 显示码为诊断仪上显示的码（如 U210088），高中字节/低字节为十六进制（如 E100 + 88）。</p>
+        <p>⚠️ 微信内打不开？点右上角 ··· → <b>在浏览器中打开</b>。</p>
+      </div>
     </div>
 
-    <div class="tip">💡 维修前请先确认车型与故障码对应正确</div>
-    <div class="notes">
-      <p>⚠️ 显示码为诊断仪上显示的码（如 U210088），高中字节/低字节为十六进制（如 E100 + 88）。</p>
-      <p>⚠️ 微信内打不开？点右上角 ··· → <b>在浏览器中打开</b>。</p>
+    <!-- 数据分析 -->
+    <div id="vLog" hidden>
+      <div class="card">
+        <div class="step"><div class="num">3</div><h2>打开报文</h2><span class="cur" id="dbcCur"></span></div>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept=".blf,.asc" hidden>
+          📂 点击选择或拖入 <b>.blf</b> / <b>.asc</b> 报文文件<br><small>文件只在本机浏览器内解析，不会上传</small>
+        </label>
+        <div class="bar" id="bar" hidden><div></div></div>
+        <div id="info"></div>
+      </div>
+
+      <div id="res" hidden>
+        <div class="card">
+          <div class="step"><div class="num">4</div><h2>故障码识别</h2></div>
+          <div id="dtcOut"></div>
+        </div>
+        <div class="card" id="susCard" hidden>
+          <div class="step"><h2>⚠️ 疑似异常的状态信号</h2></div>
+          <p class="hint" style="margin:-8px 0 10px">报文中出现过“故障 / 报警 / 无效”类取值的信号，点一下加入曲线。</p>
+          <div class="chips" id="susOut"></div>
+        </div>
+        <div class="card">
+          <div class="step"><div class="num">5</div><h2>信号曲线</h2></div>
+          <div class="sbox">
+            <input class="sq" id="sq" placeholder="搜索信号名 / 报文名 / 注释，如 VehicleSpeed、轮速、IBCU_17A" autocomplete="off" spellcheck="false">
+            <div class="drop-list" id="sl" hidden></div>
+          </div>
+          <div class="chips" id="chips" style="margin-top:10px"></div>
+          <div class="tools">
+            <button id="zin">＋ 放大</button><button id="zout">－ 缩小</button><button id="zall">⟲ 全部</button>
+            <span class="sp"></span>
+            <button id="hdec">窗口变矮</button><button id="hinc">窗口变高</button><button id="clr">清空曲线</button>
+          </div>
+          <div class="plot" id="plot"></div>
+          <p class="hint">滚轮 / 双指缩放时间轴，按住拖动平移，双击复位；鼠标悬停查看各信号当前值。</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-const MODE = 'sef';
+// 报文读取与解析：BLF / ASC → 帧表；DBC 信号解码；ISO-TP 重组与 UDS 故障码识别。
+// 纯函数，浏览器和 Node（自测）通用。
+const CanLog = (() => {
+  const EXT = 0x80000000;
+
+  // ---- 帧表：按列存放，省内存 ----
+  class Frames {
+    constructor() {
+      this.n = 0; this.cap = 0; this.dlen = 0;
+      this.grow(1 << 14);
+      this.data = new Uint8Array(1 << 20);
+    }
+    grow(cap) {
+      const re = (A, old) => { const a = new A(cap); if (old) a.set(old.subarray(0, this.n)); return a; };
+      this.t = re(Float64Array, this.t); this.id = re(Uint32Array, this.id); this.off = re(Uint32Array, this.off);
+      this.len = re(Uint8Array, this.len); this.ch = re(Uint8Array, this.ch); this.fl = re(Uint8Array, this.fl);
+      this.cap = cap;
+    }
+    // fl：1=发送 2=CAN FD 4=远程帧
+    push(t, id, ch, fl, bytes) {
+      if (this.n === this.cap) this.grow(this.cap * 2);
+      if (this.dlen + bytes.length > this.data.length) {
+        const d = new Uint8Array(this.data.length * 2); d.set(this.data.subarray(0, this.dlen)); this.data = d;
+      }
+      const i = this.n++;
+      this.t[i] = t; this.id[i] = id; this.ch[i] = ch; this.fl[i] = fl;
+      this.len[i] = bytes.length; this.off[i] = this.dlen;
+      this.data.set(bytes, this.dlen); this.dlen += bytes.length;
+    }
+    bytes(i) { return this.data.subarray(this.off[i], this.off[i] + this.len[i]); }
+    // 结束读取：时间从 0 开始、按时间排序（多通道 BLF 偶有乱序）、建 ID 索引
+    finish() {
+      const n = this.n;
+      for (const k of ['t', 'id', 'off', 'len', 'ch', 'fl']) this[k] = this[k].slice(0, n);
+      this.data = this.data.slice(0, this.dlen);
+      let sorted = true;
+      for (let i = 1; i < n; i++) if (this.t[i] < this.t[i - 1]) { sorted = false; break; }
+      if (!sorted) {
+        const ord = Uint32Array.from({ length: n }, (_, i) => i).sort((a, b) => this.t[a] - this.t[b]);
+        for (const k of ['t', 'id', 'off', 'len', 'ch', 'fl']) {
+          const src = this[k], a = new src.constructor(n);
+          for (let i = 0; i < n; i++) a[i] = src[ord[i]];
+          this[k] = a;
+        }
+      }
+      this.t0 = n ? this.t[0] : 0;
+      for (let i = 0; i < n; i++) this.t[i] -= this.t0;
+      this.dur = n ? this.t[n - 1] : 0;
+      const cnt = new Map();
+      for (let i = 0; i < n; i++) cnt.set(this.id[i], (cnt.get(this.id[i]) || 0) + 1);
+      this.byId = new Map();
+      for (const [id, c] of cnt) this.byId.set(id, new Uint32Array(c));
+      const pos = new Map();
+      for (let i = 0; i < n; i++) {
+        const id = this.id[i], p = pos.get(id) || 0;
+        this.byId.get(id)[p] = i; pos.set(id, p + 1);
+      }
+      return this;
+    }
+  }
+
+  // ---- BLF（Vector 二进制日志）----
+  const td = new TextDecoder('latin1');
+  const sig4 = (u8, p) => td.decode(u8.subarray(p, p + 4));
+
+  async function inflate(u8) {
+    const ds = new DecompressionStream('deflate');    // BLF 用 zlib 封装，对应 'deflate'
+    const out = new Response(new Blob([u8]).stream().pipeThrough(ds));
+    return new Uint8Array(await out.arrayBuffer());
+  }
+
+  function findLOBJ(u8, p) {
+    for (const end = u8.length - 3; p < end; p++)
+      if (u8[p] === 0x4C && u8[p + 1] === 0x4F && u8[p + 2] === 0x42 && u8[p + 3] === 0x4A) return p;
+    return -1;
+  }
+
+  // 解析一段（解压后的）对象流；返回未完整的尾部起点
+  function blfObjects(u8, fr) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let p = 0;
+    for (;;) {
+      p = findLOBJ(u8, p);
+      if (p < 0 || p + 16 > u8.length) return p < 0 ? Math.max(0, u8.length - 3) : p;
+      const hsize = dv.getUint16(p + 4, true);
+      const osize = dv.getUint32(p + 8, true), type = dv.getUint32(p + 12, true);
+      if (osize < 16) { p += 4; continue; }
+      if (p + osize > u8.length) return p;
+      const flags = dv.getUint32(p + 16, true);
+      const ts = Number(dv.getBigUint64(p + 24, true));       // V1 / V2 对象头的时间戳都在偏移 24
+      const t = ts * (flags === 1 ? 1e-5 : 1e-9);
+      const b = p + hsize;
+      if (type === 1 || type === 86) {                          // CAN_MESSAGE / CAN_MESSAGE2
+        const ch = dv.getUint16(b, true), f = u8[b + 2], dlc = u8[b + 3], id = dv.getUint32(b + 4, true);
+        const n = Math.min(dlc, 8);
+        fr.push(t, id, ch, (f & 1) | (f & 0x80 ? 4 : 0), f & 0x80 ? new Uint8Array(0) : u8.subarray(b + 8, b + 8 + n));
+      } else if (type === 100) {                                // CAN_FD_MESSAGE
+        const ch = dv.getUint16(b, true), f = u8[b + 2], id = dv.getUint32(b + 4, true);
+        const fdf = u8[b + 13], n = Math.min(u8[b + 14], 64);
+        fr.push(t, id, ch, (f & 1) | (fdf & 1 ? 2 : 0) | (f & 0x80 ? 4 : 0), u8.subarray(b + 20, b + 20 + n));
+      } else if (type === 101) {                                // CAN_FD_MESSAGE_64
+        const ch = u8[b], n = Math.min(u8[b + 2], 64), id = dv.getUint32(b + 4, true);
+        const f = dv.getUint32(b + 12, true), dir = u8[b + 34];
+        fr.push(t, id, ch, (dir === 1 ? 1 : 0) | (f & 0x1000 ? 2 : 0) | (f & 0x10 ? 4 : 0), u8.subarray(b + 40, b + 40 + n));
+      }
+      p += osize;
+    }
+  }
+
+  async function readBLF(buf, progress) {
+    const u8 = new Uint8Array(buf), dv = new DataView(buf);
+    if (sig4(u8, 0) !== 'LOGG') throw new Error('不是有效的 BLF 文件');
+    const fr = new Frames();
+    let p = dv.getUint32(4, true), tail = new Uint8Array(0), k = 0;
+    while (p + 16 <= u8.length) {
+      if (sig4(u8, p) !== 'LOBJ') { const q = findLOBJ(u8, p + 1); if (q < 0) break; p = q; continue; }
+      const osize = dv.getUint32(p + 8, true), type = dv.getUint32(p + 12, true);
+      if (osize < 16 || p + osize > u8.length) break;
+      if (type === 10) {                                        // LOG_CONTAINER
+        const method = dv.getUint16(p + 16, true);
+        let body = u8.subarray(p + 32, p + osize);
+        if (method === 2) body = await inflate(body);
+        else if (method !== 0) body = null;
+        if (body) {
+          const all = new Uint8Array(tail.length + body.length);
+          all.set(tail); all.set(body, tail.length);
+          tail = all.slice(blfObjects(all, fr));
+        }
+      } else {                                                  // 未打包的对象
+        blfObjects(u8.subarray(p, p + osize), fr);
+      }
+      p += osize + (osize % 4);
+      if (progress && (++k & 31) === 0) { progress(p / u8.length); await new Promise(r => setTimeout(r)); }
+    }
+    return fr.finish();
+  }
+
+  // ---- ASC（Vector 文本日志）----
+  async function readASC(text, progress) {
+    const fr = new Frames();
+    let hex = true, rel = false, last = 0;
+    const lines = text.split(/\r?\n/);
+    const b = new Uint8Array(64);
+    for (let li = 0; li < lines.length; li++) {
+      const s = lines[li].trim();
+      if (!s) continue;
+      if (/^base\s/i.test(s)) { hex = /^base\s+hex/i.test(s); rel = /timestamps\s+relative/i.test(s); continue; }
+      if (!/^\d/.test(s)) continue;
+      const tk = s.split(/\s+/);
+      let t = parseFloat(tk[0]);
+      if (!isFinite(t)) continue;
+      if (rel) { t += last; last = t; }
+      const pid = v => {
+        const ext = /x$/i.test(v), id = parseInt(ext ? v.slice(0, -1) : v, hex ? 16 : 10);
+        return isNaN(id) ? -1 : (ext ? (id | EXT) >>> 0 : id);
+      };
+      if (/^CANFD$/i.test(tk[1])) {
+        // t CANFD ch Rx|Tx id [报文名] brs esi dlc 长度 数据...
+        const ch = +tk[2], dir = tk[3], id = pid(tk[4]);
+        let k = 5;
+        if (!/^[01]$/.test(tk[k])) k++;
+        const n = parseInt(tk[k + 3], 10);
+        if (id < 0 || !(n >= 0) || n > 64) continue;
+        for (let i = 0; i < n; i++) b[i] = parseInt(tk[k + 4 + i], 16);
+        fr.push(t, id, ch, (/^tx/i.test(dir) ? 1 : 0) | 2, b.subarray(0, n));
+      } else if (/^\d+$/.test(tk[1]) && /^(rx|tx)$/i.test(tk[3])) {
+        // t ch id Rx|Tx d|r dlc 数据...
+        const ch = +tk[1], id = pid(tk[2]);
+        if (id < 0) continue;
+        if (/^r$/i.test(tk[4])) { fr.push(t, id, ch, (/^tx/i.test(tk[3]) ? 1 : 0) | 4, b.subarray(0, 0)); continue; }
+        if (!/^d$/i.test(tk[4])) continue;
+        const n = Math.min(parseInt(tk[5], 16), 8);
+        for (let i = 0; i < n; i++) b[i] = parseInt(tk[6 + i], 16);
+        fr.push(t, id, ch, /^tx/i.test(tk[3]) ? 1 : 0, b.subarray(0, n));
+      }
+      if (progress && (li & 0xFFFF) === 0) { progress(li / lines.length); await new Promise(r => setTimeout(r)); }
+    }
+    return fr.finish();
+  }
+
+  async function read(name, buf, progress) {
+    if (/\.blf$/i.test(name)) return readBLF(buf, progress);
+    if (/\.asc$/i.test(name)) return readASC(new TextDecoder('latin1').decode(buf), progress);
+    throw new Error('只支持 .blf 和 .asc 文件');
+  }
+
+  // ---- DBC 信号解码 ----
+  function rawValue(d, s) {
+    let v = 0;
+    if (s.bo === 1) {                                           // Intel：起始位为最低位
+      for (let i = s.bl - 1; i >= 0; i--) {
+        const p = s.sb + i, by = p >> 3;
+        if (by >= d.length) return null;
+        v = v * 2 + ((d[by] >> (p & 7)) & 1);
+      }
+    } else {                                                    // Motorola：起始位为最高位，锯齿编号
+      let p = s.sb;
+      for (let i = 0; i < s.bl; i++) {
+        const by = p >> 3;
+        if (by >= d.length) return null;
+        v = v * 2 + ((d[by] >> (p & 7)) & 1);
+        p = (p & 7) === 0 ? p + 15 : p - 1;
+      }
+    }
+    if (s.fl) {
+      const dv = new DataView(new ArrayBuffer(8));
+      if (s.fl === 1) { dv.setUint32(0, v); return dv.getFloat32(0); }
+      dv.setUint32(0, Math.floor(v / 2 ** 32)); dv.setUint32(4, v % 2 ** 32); return dv.getFloat64(0);
+    }
+    if (s.s && v >= 2 ** (s.bl - 1)) v -= 2 ** s.bl;
+    return v;
+  }
+
+  // 解码某报文的一个信号 → {t: Float64Array, raw: Float64Array, v: Float64Array}
+  function decodeSignal(fr, msg, s) {
+    const idx = fr.byId.get(msg.ext ? (msg.id | EXT) >>> 0 : msg.id);
+    if (!idx) return { t: new Float64Array(0), raw: new Float64Array(0), v: new Float64Array(0) };
+    const mux = typeof s.mux === 'number' ? msg.sigs.find(x => x.mux === 'M') : null;
+    const t = new Float64Array(idx.length), raw = new Float64Array(idx.length), v = new Float64Array(idx.length);
+    let n = 0;
+    for (const i of idx) {
+      if (fr.fl[i] & 4) continue;
+      const d = fr.bytes(i);
+      if (mux && rawValue(d, mux) !== s.mux) continue;
+      const r = rawValue(d, s);
+      if (r === null) continue;
+      t[n] = fr.t[i]; raw[n] = r; v[n] = r * s.f + s.o; n++;
+    }
+    return { t: t.subarray(0, n), raw: raw.subarray(0, n), v: v.subarray(0, n) };
+  }
+
+  // ---- 故障码 ----
+  const hex2 = x => x.toString(16).toUpperCase().padStart(2, '0');
+  // 3 字节 → 显示码（如 0x40 0x35 0x12 → C003512）
+  function dtcText(b1, b2, b3) {
+    return 'PCBU'[b1 >> 6] + ((b1 >> 4) & 3).toString(16) + (b1 & 15).toString(16).toUpperCase() + hex2(b2) + hex2(b3);
+  }
+  const STATUS_BITS = ['当前故障', '本次循环故障', '待定', '已确认', '清码后未完成测试', '清码后曾失败', '本循环未完成测试', '请求报警灯'];
+  const statusText = st => STATUS_BITS.filter((_, i) => st & (1 << i)).join('、') || '无';
+  const isDiagId = id => (!(id & EXT) && id >= 0x700 && id <= 0x7FF) || ((id & EXT) && ((id & 0x1FFF0000) >>> 16) === 0x18DA);
+
+  // ISO-TP 重组 → [{t, id, ch, p: Uint8Array}]
+  function isotp(fr) {
+    const out = [], st = new Map();
+    for (const [id, idx] of fr.byId) {
+      if (!isDiagId(id)) continue;
+      for (const i of idx) {
+        const d = fr.bytes(i), key = id + ':' + fr.ch[i];
+        if (!d.length) continue;
+        const type = d[0] >> 4;
+        if (type === 0) {
+          let n = d[0] & 15, s = 1;
+          if (n === 0 && d.length > 8) { n = d[1]; s = 2; }
+          if (n && s + n <= d.length) out.push({ t: fr.t[i], id, ch: fr.ch[i], p: d.slice(s, s + n) });
+          st.delete(key);
+        } else if (type === 1) {
+          let n = ((d[0] & 15) << 8) | d[1], s = 2;
+          if (n === 0) { n = ((d[2] << 24) | (d[3] << 16) | (d[4] << 8) | d[5]) >>> 0; s = 6; }
+          if (n > 0 && n < 1 << 20) {
+            const buf = new Uint8Array(n), k = Math.min(n, d.length - s);
+            buf.set(d.subarray(s, s + k));
+            st.set(key, { t: fr.t[i], buf, got: k, sn: 1 });
+          }
+        } else if (type === 2) {
+          const x = st.get(key);
+          if (!x) continue;
+          if ((d[0] & 15) !== (x.sn & 15)) { st.delete(key); continue; }
+          const k = Math.min(x.buf.length - x.got, d.length - 1);
+          x.buf.set(d.subarray(1, 1 + k), x.got); x.got += k; x.sn++;
+          if (x.got >= x.buf.length) { out.push({ t: x.t, id, ch: fr.ch[i], p: x.buf }); st.delete(key); }
+        }
+      }
+    }
+    return out.sort((a, b) => a.t - b.t);
+  }
+
+  // 找故障码：诊断应答（19 服务）+ DBC 中广播的 DTC 字节信号
+  // 返回 {dtcs: [{code, b, st, src, ecu, t, n}], events: [{t, ecu, text}]}
+  function findDTCs(fr, db) {
+    const byKey = new Map(), events = [];
+    const ecuOf = id => {
+      const m = db && db.msgs.find(m => ((m.ext ? (m.id | EXT) >>> 0 : m.id)) === id);
+      return m ? m.tx : '0x' + (id & 0x1FFFFFFF).toString(16).toUpperCase();
+    };
+    const add = (b1, b2, b3, st, src, ecu, t) => {
+      if (!(b1 | b2 | b3)) return;
+      const code = dtcText(b1, b2, b3), k = ecu + code;
+      const x = byKey.get(k);
+      if (x) { x.st |= st; x.n++; x.tl = t; } else byKey.set(k, { code, b: hex2(b1) + hex2(b2) + ' ' + hex2(b3), st, src, ecu, t, tl: t, n: 1 });
+    };
+    for (const m of isotp(fr)) {
+      const p = m.p, ecu = ecuOf(m.id);
+      if (p[0] === 0x59 && [0x02, 0x0A, 0x0F, 0x13, 0x15].includes(p[1])) {
+        for (let i = 3; i + 4 <= p.length; i += 4)
+          if (p[1] !== 0x0A || (p[i + 3] & 0x0D)) add(p[i], p[i + 1], p[i + 2], p[i + 3], '诊断应答 19 ' + hex2(p[1]), ecu, m.t);
+        events.push({ t: m.t, ecu, text: `读故障码应答（19 ${hex2(p[1])}），${Math.max(0, (p.length - 3) >> 2)} 条` });
+      } else if (p[0] === 0x59 && [0x04, 0x06].includes(p[1]) && p.length >= 6) {
+        add(p[2], p[3], p[4], p[5], '诊断应答 19 ' + hex2(p[1]), ecu, m.t);
+      } else if (p[0] === 0x54) {
+        events.push({ t: m.t, ecu, text: '清除故障码成功（14 服务）' });
+      } else if (p[0] === 0x7F && p[1] === 0x19) {
+        events.push({ t: m.t, ecu, text: '读故障码被拒绝，否定码 0x' + hex2(p[2]) });
+      }
+    }
+    // 广播信号：XXX_DTC1_HighByte / MiddByte / LowByte / Status
+    if (db) for (const msg of db.msgs) {
+      const groups = {};
+      for (const s of msg.sigs) {
+        const m = s.n.match(/^(.*?)_?(High|Midd|Middle|Mid|Low)_?Byte$/i) || s.n.match(/^(.*DTC\d*)_?(Status|Sts)$/i);
+        if (m) (groups[m[1]] = groups[m[1]] || {})[m[2].toLowerCase()[0] === 'm' ? 'm' : m[2].toLowerCase()[0]] = s;
+      }
+      for (const [g, x] of Object.entries(groups)) {
+        if (!x.h || !x.m || !x.l) continue;
+        const idx = fr.byId.get(msg.ext ? (msg.id | EXT) >>> 0 : msg.id);
+        if (!idx) continue;
+        for (const i of idx) {
+          const d = fr.bytes(i), h = rawValue(d, x.h), md = rawValue(d, x.m), l = rawValue(d, x.l);
+          if (h === null || md === null || l === null) continue;
+          add(h, md, l, x.s ? rawValue(d, x.s) || 0 : 0, '广播信号 ' + g, msg.tx, fr.t[i]);
+        }
+      }
+    }
+    return { dtcs: [...byKey.values()].sort((a, b) => a.t - b.t), events };
+  }
+
+  // 疑似异常的状态信号：故障/报警类、带值描述、出现了非“正常”的取值
+  const CAND = /fail|fault|flt|err|warn|lamp|light|malfunc|invalid|defect|abnormal|故障|失效|错误|报警|异常|指示灯/i;
+  const BADV = /fail|fault|err|warn|malfunc|invalid|defect|abnormal|故障|失效|错误|报警|异常/i;
+  const ONV = /^on$|\bon\b|active|request|blink|flash|点亮|亮|闪/i;
+  const OKV = /\bno\b|\bnot\b|normal|^no|none|无|正常|未|inactive|\boff\b|\bok\b|^valid|reserved|init/i;
+  function abnormal(s, txt) {
+    if (OKV.test(txt)) return false;
+    return BADV.test(txt) || (/lamp|light|warn|indicat|报警|灯/i.test(s.n) && ONV.test(txt));
+  }
+  function suspects(fr, db) {
+    const out = [];
+    if (!db) return out;
+    for (const msg of db.msgs) {
+      if (!fr.byId.has(msg.ext ? (msg.id | EXT) >>> 0 : msg.id)) continue;
+      for (const s of msg.sigs) {
+        if (!s.vt || !CAND.test(s.n + ' ' + (s.c || ''))) continue;
+        const d = decodeSignal(fr, msg, s), seen = new Map();
+        for (let i = 0; i < d.raw.length; i++) if (!seen.has(d.raw[i])) seen.set(d.raw[i], d.t[i]);
+        for (const [r, t] of seen) {
+          const txt = s.vt[r];
+          if (txt !== undefined && abnormal(s, txt)) out.push({ msg: msg.name, sig: s.n, raw: r, text: txt, t });
+        }
+      }
+    }
+    return out.sort((a, b) => a.t - b.t);
+  }
+
+  return { Frames, read, readBLF, readASC, rawValue, decodeSignal, isotp, findDTCs, suspects, dtcText, statusText, EXT };
+})();
+if (typeof module !== 'undefined') module.exports = CanLog;
+
+</script>
+<script>
+// 多信号曲线（类似 CANalyzer Graphics）：每个信号一条泳道、各自 Y 轴，从上往下均分高度，共用时间轴。
+// 滚轮 / 双指缩放时间轴，拖动平移，双击复位；鼠标悬停显示各信号当前值。
+const Plot = (() => {
+  const COLORS = ['#2a6db5', '#d93025', '#0f9d58', '#e37400', '#8e24aa', '#00838f', '#c2185b', '#5d4037', '#3949ab', '#7cb342'];
+  const AXIS_W = 70, XAXIS_H = 26, PAD = 6;
+
+  function niceStep(span, n) {
+    const raw = span / Math.max(1, n), p = 10 ** Math.floor(Math.log10(raw)), r = raw / p;
+    return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * p;
+  }
+  const fmt = (v, step) => {
+    const d = Math.max(0, Math.min(6, -Math.floor(Math.log10(step || 1) + 1e-9)));
+    return Number(v.toFixed(d)).toString();
+  };
+  // 二分：第一个 t[i] >= x
+  function lower(t, x) {
+    let lo = 0, hi = t.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; }
+    return lo;
+  }
+
+  class Plot {
+    constructor(box, onChange) {
+      this.box = box; this.onChange = onChange;
+      this.cv = document.createElement('canvas');
+      this.cv.style.cssText = 'display:block;width:100%;touch-action:none;cursor:grab';
+      box.appendChild(this.cv);
+      this.ctx = this.cv.getContext('2d');
+      this.sigs = []; this.x0 = 0; this.x1 = 1; this.full = [0, 1]; this.hover = null; this.height = 0;
+      this.bind();
+      new ResizeObserver(() => this.draw()).observe(box);
+    }
+
+    // sigs: [{key, name, unit, t, v, vt, step}]
+    set(sigs, dur, keepView) {
+      sigs.forEach((s, i) => { s.color = s.color || COLORS[i % COLORS.length]; });
+      this.sigs = sigs;
+      this.full = [0, Math.max(dur, 1e-3)];
+      if (!keepView) [this.x0, this.x1] = this.full;
+      this.draw();
+    }
+    reset() { [this.x0, this.x1] = this.full; this.draw(); }
+    zoom(f, cx) {                                      // f<1 放大；cx 为缩放中心（时间）
+      const c = cx ?? (this.x0 + this.x1) / 2, [a, b] = this.full;
+      let w = Math.min(b - a, Math.max(1e-5, (this.x1 - this.x0) * f));
+      let x0 = c - (c - this.x0) * w / (this.x1 - this.x0);
+      x0 = Math.max(a, Math.min(b - w, x0));
+      this.x0 = x0; this.x1 = x0 + w; this.draw();
+    }
+    pan(dt) {
+      const [a, b] = this.full, w = this.x1 - this.x0;
+      this.x0 = Math.max(a, Math.min(b - w, this.x0 + dt)); this.x1 = this.x0 + w; this.draw();
+    }
+    setHeight(h) { this.height = h; this.draw(); }
+
+    geom() {
+      const W = this.box.clientWidth, n = Math.max(1, this.sigs.length);
+      const H = this.height || Math.max(320, Math.min(window.innerHeight * 0.72, 90 + n * 150));
+      return { W, H, n, laneH: (H - XAXIS_H) / n, pw: W - AXIS_W - PAD };
+    }
+    tx(t, g) { return AXIS_W + (t - this.x0) / (this.x1 - this.x0) * g.pw; }
+    xt(x, g) { return this.x0 + (x - AXIS_W) / g.pw * (this.x1 - this.x0); }
+
+    draw() {
+      const g = this.geom(), dpr = window.devicePixelRatio || 1, c = this.ctx;
+      if (!g.W) return;
+      this.cv.style.height = g.H + 'px';
+      if (this.cv.width !== Math.round(g.W * dpr) || this.cv.height !== Math.round(g.H * dpr)) {
+        this.cv.width = Math.round(g.W * dpr); this.cv.height = Math.round(g.H * dpr);
+      }
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.clearRect(0, 0, g.W, g.H);
+      c.font = '11px -apple-system, "Microsoft YaHei", sans-serif';
+      if (!this.sigs.length) {
+        c.fillStyle = '#6b7280'; c.textAlign = 'center';
+        c.fillText('在上方搜索并添加信号', g.W / 2, g.H / 2);
+        return;
+      }
+      // 时间网格
+      const xs = niceStep(this.x1 - this.x0, Math.max(2, g.pw / 90));
+      c.strokeStyle = '#eef1f5'; c.lineWidth = 1; c.beginPath();
+      for (let t = Math.ceil(this.x0 / xs) * xs; t <= this.x1; t += xs) {
+        const x = Math.round(this.tx(t, g)) + .5; c.moveTo(x, 0); c.lineTo(x, g.H - XAXIS_H);
+      }
+      c.stroke();
+      this.sigs.forEach((s, i) => this.lane(s, i, g));
+      // 时间轴
+      c.fillStyle = '#6b7280'; c.textAlign = 'center'; c.textBaseline = 'top';
+      for (let t = Math.ceil(this.x0 / xs) * xs; t <= this.x1; t += xs) c.fillText(fmt(t, xs) + 's', this.tx(t, g), g.H - XAXIS_H + 6);
+      c.strokeStyle = '#9aa5b4'; c.beginPath(); c.moveTo(AXIS_W, g.H - XAXIS_H + .5); c.lineTo(g.W - PAD, g.H - XAXIS_H + .5); c.stroke();
+      // 光标
+      if (this.hover !== null) {
+        const x = Math.round(this.tx(this.hover, g)) + .5;
+        c.strokeStyle = 'rgba(0,0,0,.45)'; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, g.H - XAXIS_H); c.stroke(); c.setLineDash([]);
+        const lbl = this.hover.toFixed(4) + 's', w = c.measureText(lbl).width + 8;
+        c.fillStyle = '#1f2937'; c.fillRect(Math.min(x - w / 2, g.W - w), g.H - XAXIS_H + 2, w, 18);
+        c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(lbl, Math.min(x, g.W - w / 2), g.H - XAXIS_H + 11);
+      }
+    }
+
+    lane(s, i, g) {
+      const c = this.ctx, top = i * g.laneH, h = g.laneH, y0 = top + 16, y1 = top + h - 6;
+      if (i) { c.strokeStyle = '#d5dde8'; c.beginPath(); c.moveTo(0, top + .5); c.lineTo(g.W, top + .5); c.stroke(); }
+      const a = Math.max(0, lower(s.t, this.x0) - 1), b = Math.min(s.t.length, lower(s.t, this.x1) + 1);
+      let mn = Infinity, mx = -Infinity;
+      for (let k = a; k < b; k++) { const v = s.v[k]; if (v < mn) mn = v; if (v > mx) mx = v; }
+      if (!isFinite(mn)) { mn = 0; mx = 1; }
+      if (mn === mx) { mn -= 1; mx += 1; } else { const p = (mx - mn) * .08; mn -= p; mx += p; }
+      const ty = v => y1 - (v - mn) / (mx - mn) * (y1 - y0);
+      // Y 轴刻度
+      const ys = niceStep(mx - mn, Math.max(1, Math.floor((y1 - y0) / 28)));
+      c.textAlign = 'right'; c.textBaseline = 'middle';
+      for (let v = Math.ceil(mn / ys) * ys; v <= mx; v += ys) {
+        const y = Math.round(ty(v)) + .5;
+        c.strokeStyle = '#f1f3f6'; c.beginPath(); c.moveTo(AXIS_W, y); c.lineTo(g.W - PAD, y); c.stroke();
+        c.fillStyle = '#6b7280'; c.fillText(fmt(v, ys), AXIS_W - 6, y);
+      }
+      c.strokeStyle = s.color; c.lineWidth = 2; c.beginPath(); c.moveTo(AXIS_W - .5, y0 - 4); c.lineTo(AXIS_W - .5, y1 + 2); c.stroke();
+      // 曲线：点多时每个像素列取最小/最大值
+      c.save(); c.beginPath(); c.rect(AXIS_W, top + 1, g.pw, h - 1); c.clip();
+      c.strokeStyle = s.color; c.lineWidth = 1.4; c.beginPath();
+      if (b - a > g.pw * 3) {
+        let col = -1, cmn = 0, cmx = 0, first = true;
+        const flush = () => {
+          if (col < 0) return;
+          const x = AXIS_W + col + .5;
+          if (first) { c.moveTo(x, ty(cmn)); first = false; } else c.lineTo(x, ty(cmn));
+          c.lineTo(x, ty(cmx));
+        };
+        for (let k = a; k < b; k++) {
+          const cc = Math.floor(this.tx(s.t[k], g) - AXIS_W), v = s.v[k];
+          if (cc !== col) { flush(); col = cc; cmn = cmx = v; } else { if (v < cmn) cmn = v; if (v > cmx) cmx = v; }
+        }
+        flush();
+      } else {
+        for (let k = a; k < b; k++) {
+          const x = this.tx(s.t[k], g), y = ty(s.v[k]);
+          if (k === a) c.moveTo(x, y);
+          else if (s.step) { c.lineTo(x, ty(s.v[k - 1])); c.lineTo(x, y); } else c.lineTo(x, y);
+        }
+        if (s.step && b > a) c.lineTo(this.tx(Math.min(this.x1, s.t[b - 1] + (this.x1 - this.x0)), g), ty(s.v[b - 1]));
+      }
+      c.stroke();
+      if (b - a <= g.pw / 6) {                          // 点稀疏时画出采样点
+        c.fillStyle = s.color;
+        for (let k = a; k < b; k++) c.fillRect(this.tx(s.t[k], g) - 1.5, ty(s.v[k]) - 1.5, 3, 3);
+      }
+      c.restore();
+      // 名称 + 光标值
+      let label = s.name + (s.unit ? ` [${s.unit}]` : '');
+      if (this.hover !== null && s.t.length) {
+        const k = Math.max(0, lower(s.t, this.hover + 1e-9) - 1), v = s.v[k], r = s.raw ? s.raw[k] : v;
+        label += ' = ' + (Number.isInteger(v) ? v : Number(v.toPrecision(7))) + (s.vt && s.vt[r] !== undefined ? ` (${s.vt[r]})` : '');
+      }
+      c.font = 'bold 12px -apple-system, "Microsoft YaHei", sans-serif';
+      c.textAlign = 'left'; c.textBaseline = 'top';
+      const w = c.measureText(label).width;
+      c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(AXIS_W + 4, top + 2, w + 8, 16);
+      c.fillStyle = s.color; c.fillText(label, AXIS_W + 8, top + 3);
+      c.font = '11px -apple-system, "Microsoft YaHei", sans-serif';
+    }
+
+    bind() {
+      const cv = this.cv, pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+      cv.addEventListener('wheel', e => {
+        if (!this.sigs.length) return;
+        e.preventDefault();
+        const g = this.geom(), [x] = pt(e);
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) this.pan(e.deltaX / g.pw * (this.x1 - this.x0));
+        else this.zoom(Math.exp(e.deltaY * 0.0015), this.xt(Math.max(AXIS_W, x), g));
+      }, { passive: false });
+      const ptrs = new Map();
+      let drag = null, pinch = null;
+      cv.addEventListener('pointerdown', e => {
+        cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, pt(e));
+        if (ptrs.size === 1) { drag = { x: pt(e)[0], x0: this.x0 }; cv.style.cursor = 'grabbing'; }
+        if (ptrs.size === 2) {
+          const [p, q] = [...ptrs.values()];
+          pinch = { d: Math.abs(p[0] - q[0]) || 1, c: this.xt((p[0] + q[0]) / 2, this.geom()), x0: this.x0, x1: this.x1 };
+          drag = null;
+        }
+      });
+      cv.addEventListener('pointermove', e => {
+        const g = this.geom(), [x] = pt(e);
+        if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, pt(e));
+        if (pinch && ptrs.size === 2) {
+          const [p, q] = [...ptrs.values()], f = pinch.d / (Math.abs(p[0] - q[0]) || 1);
+          this.x0 = pinch.x0; this.x1 = pinch.x1; this.zoom(f, pinch.c); return;
+        }
+        if (drag) {
+          const w = this.x1 - this.x0;
+          this.x0 = drag.x0; this.x1 = drag.x0 + w;
+          this.pan(-(x - drag.x) / g.pw * w);
+        }
+        this.hover = x >= AXIS_W && this.sigs.length ? this.xt(x, g) : null;
+        this.draw();
+      });
+      const up = e => {
+        ptrs.delete(e.pointerId);
+        if (ptrs.size < 2) pinch = null;
+        if (!ptrs.size) { drag = null; cv.style.cursor = 'grab'; }
+      };
+      cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { this.hover = null; this.draw(); } });
+      cv.addEventListener('dblclick', () => this.reset());
+    }
+  }
+  return Plot;
+})();
+
+</script>
+<script>
 const $ = id => document.getElementById(id);
 const store = {
   get(s, k) { try { return window[s].getItem(k); } catch (e) { return null; } },
   set(s, k, v) { try { window[s].setItem(k, v); } catch (e) {} },
 };
-let DB = null, model = null, items = [];
-
-const norm = s => s.toUpperCase().replace(/0X/g, '').replace(/[^0-9A-Z]/g, '');
-// 显示码 → 3 字节 hex：首字母 P/C/B/U = 00/01/10/11 放在最高两位
-function dispToHex(d) {
-  const n = 'PCBU'.indexOf(d[0]);
-  return n < 0 ? '' : ((n << 2) | parseInt(d[1], 16)).toString(16).toUpperCase() + d.slice(2);
-}
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let DB = null, model = null, items = [], view = null;
 
+// ================= 车型 / 功能 =================
 function start(data) {
   DB = data;
   $('lock').hidden = true;
   $('app').hidden = false;
-  const box = $('models');
   DB.models.forEach((m, i) => {
     const b = document.createElement('button');
     b.textContent = m.model;
     b.onclick = () => pick(i);
-    box.appendChild(b);
+    $('models').appendChild(b);
   });
+  document.querySelectorAll('.fns button').forEach(b => b.onclick = () => show(b.dataset.v));
   const last = DB.models.findIndex(m => m.model === store.get('localStorage', 'dtc_model'));
   if (last >= 0) pick(last, true);
 }
@@ -150,7 +809,28 @@ function pick(i, silent) {
   $('cur').textContent = model.model;
   store.set('localStorage', 'dtc_model', model.model);
   if ($('q').value) search(); else $('s3').hidden = true;
-  if (!silent) $('q').focus();
+  if (LOG) analyze();
+  show(view || store.get('localStorage', 'dtc_view') || 'dtc', silent);
+}
+
+function show(v, silent) {
+  view = v;
+  store.set('localStorage', 'dtc_view', v);
+  document.querySelectorAll('.fns button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('vDtc').hidden = v !== 'dtc';
+  $('vLog').hidden = v !== 'log';
+  document.body.classList.toggle('wide', v === 'log');
+  $('dbcCur').textContent = model.dbc ? 'DBC：' + model.dbc : '该车型暂无 DBC';
+  if (v === 'dtc' && !silent) $('q').focus();
+  if (v === 'log' && plot) plot.draw();
+}
+
+// ================= 故障码查询 =================
+const norm = s => s.toUpperCase().replace(/0X/g, '').replace(/[^0-9A-Z]/g, '');
+// 显示码 → 3 字节 hex：首字母 P/C/B/U = 00/01/10/11 放在最高两位
+function dispToHex(d) {
+  const n = 'PCBU'.indexOf(d[0]);
+  return n < 0 ? '' : ((n << 2) | parseInt(d[1], 16)).toString(16).toUpperCase() + d.slice(2);
 }
 
 function search() {
@@ -196,36 +876,226 @@ let timer;
 $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
 $('form').addEventListener('submit', e => { e.preventDefault(); $('q').blur(); search(); });
 
-// ---- 加载数据 ----
+// ================= 数据分析 =================
+let LOG = null, LOGNAME = '', DBC = null, SIGS = [], plot = null, plotH = 0, dbcPick = '';
+const keyOf = m => m.ext ? (m.id | CanLog.EXT) >>> 0 : m.id;
+const hexId = id => '0x' + (id & 0x1FFFFFFF).toString(16).toUpperCase() + (id & CanLog.EXT ? 'x' : '');
+const fmtT = t => t.toFixed(3) + ' s';
+const BRAKE = /IBCU|ESP|ESC|EPB|ABS|IPB|EBB|EHB|RBM|BCU/i;
+
+async function openFile(f) {
+  if (!f) return;
+  $('bar').hidden = false;
+  const bar = $('bar').firstElementChild;
+  bar.style.width = '2%';
+  $('info').innerHTML = `<p class="hint">正在读取 ${esc(f.name)} …</p>`;
+  try {
+    LOG = await CanLog.read(f.name, await f.arrayBuffer(), p => bar.style.width = Math.round(p * 100) + '%');
+    LOGNAME = f.name;
+    bar.style.width = '100%';
+    dbcPick = '';
+    SIGS = [];
+    analyze();
+  } catch (e) {
+    LOG = null;
+    $('info').innerHTML = `<div class="warn">读取失败：${esc(e.message || e)}</div>`;
+    $('res').hidden = true;
+  }
+  setTimeout(() => $('bar').hidden = true, 600);
+}
+
+// 各 DBC 能认出多少帧，用于提示车型是否选错
+function coverage(name) {
+  const db = DB.dbcs[name], ids = new Set(db.msgs.map(keyOf));
+  let fr = 0, n = 0;
+  for (const [id, idx] of LOG.byId) if (ids.has(id)) { fr += idx.length; n++; }
+  return { name, fr, n };
+}
+
+function analyze() {
+  if (!LOG) return;
+  const name = dbcPick || model.dbc;
+  DBC = DB.dbcs[name] || null;
+  const cov = Object.keys(DB.dbcs).map(coverage).sort((a, b) => b.fr - a.fr);
+  const mine = cov.find(c => c.name === name);
+  const known = DBC ? new Set(DBC.msgs.map(keyOf)) : new Set();
+  const unknown = [...LOG.byId.keys()].filter(id => !known.has(id)).sort((a, b) => a - b);
+  let fd = 0;
+  for (let i = 0; i < LOG.n; i++) if (LOG.fl[i] & 2) fd++;
+  const chs = [...new Set(LOG.ch)].sort().map(c => 'CAN' + c).join(' ');
+  let h = '<div class="kv">' +
+    `<div><small>文件</small>${esc(LOGNAME)}</div><div><small>时长</small>${LOG.dur.toFixed(2)} s</div>` +
+    `<div><small>帧数</small>${LOG.n}${fd ? `（FD ${fd}）` : ''}</div><div><small>通道</small>${chs || '-'}</div>` +
+    `<div><small>报文 ID</small>${LOG.byId.size} 个</div>` +
+    `<div><small>DBC 能解析</small>${mine ? `${mine.n} 个 ID / ${LOG.n ? Math.round(mine.fr / LOG.n * 100) : 0}% 帧` : '无'}</div></div>`;
+  h += `<p class="hint">使用 DBC：<select id="dbcSel">${Object.keys(DB.dbcs).map(n =>
+    `<option ${n === name ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>（默认按车型自动选择）</p>`;
+  if (cov[0] && mine && cov[0].name !== name && cov[0].fr > mine.fr * 1.3)
+    h += `<div class="warn">报文和 <b>${esc(cov[0].name)}</b> 更匹配（能解析 ${Math.round(cov[0].fr / LOG.n * 100)}% 帧），请确认车型是否选对。</div>`;
+  if (unknown.length)
+    h += `<details class="hint"><summary>DBC 中没有定义的 ID（${unknown.length} 个）</summary>${unknown.map(id =>
+      `${hexId(id)}（${LOG.byId.get(id).length} 帧）`).join('、')}</details>`;
+  $('info').innerHTML = h;
+  $('dbcSel').onchange = e => { dbcPick = e.target.value; analyze(); };
+  $('res').hidden = false;
+  renderDTC();
+  renderSuspects();
+  buildIndex();
+  // 换 DBC 后保留同名信号
+  const keep = SIGS.map(s => s.key);
+  SIGS = [];
+  for (const k of keep) { const x = INDEX.find(e => e.key === k); if (x) addSig(x, true); }
+  renderSigs();
+}
+
+function renderDTC() {
+  const { dtcs, events } = CanLog.findDTCs(LOG, DBC);
+  let h = '';
+  if (!dtcs.length) {
+    h = '<div class="msg">报文中没有发现故障码<br><small>（没有诊断仪读码应答，也没有广播的故障码信号）</small></div>';
+  } else {
+    h += `<p class="hint" style="margin:-6px 0 10px">共 ${dtcs.length} 个，按问卷「${esc(model.model)}」解析：</p>`;
+    for (const d of dtcs) {
+      const it = items.find(x => x.d === d.code);
+      const diag = d.src.startsWith('诊断');
+      h += `<div class="dtc"><div class="h"><span class="code" style="font-size:17px">${esc(d.code)}</span>` +
+        `<span class="bytes">${esc(d.b)}</span><span class="meta">${esc(d.ecu)} · ${esc(d.src)}</span></div>` +
+        `<div class="meta">状态：${diag ? esc(CanLog.statusText(d.st)) + `（0x${d.st.toString(16).toUpperCase().padStart(2, '0')}）` : '0x' + d.st.toString(16).toUpperCase().padStart(2, '0')}` +
+        ` · 首次 ${fmtT(d.t)}${d.n > 1 ? ` · 共 ${d.n} 次，最后 ${fmtT(d.tl)}` : ''}</div>`;
+      if (it) {
+        h += `<div class="desc">${esc(it.desc || '（未填写）')}</div>`;
+        if (!BRAKE.test(d.ecu)) h += `<div class="warn">该故障码来自 ${esc(d.ecu)}，问卷只收录制动控制模块，含义仅供参考。</div>`;
+        h += `<details><summary>可能原因与维修建议</summary>${sec('可能原因', it, 'cause')}${sec('维修建议', it, 'fix')}</details>`;
+      } else {
+        h += `<div class="meta" style="margin-top:4px">问卷中未收录该故障码${BRAKE.test(d.ecu) ? '' : `（来自 ${esc(d.ecu)}，问卷只收录制动控制模块）`}</div>`;
+      }
+      h += '</div>';
+    }
+  }
+  if (events.length)
+    h += '<details open><summary class="hint">诊断过程</summary>' + events.map(e =>
+      `<div class="ev">${fmtT(e.t)} · ${esc(e.ecu)} · ${esc(e.text)}</div>`).join('') + '</details>';
+  $('dtcOut').innerHTML = h;
+}
+
+function renderSuspects() {
+  const sus = CanLog.suspects(LOG, DBC);
+  $('susCard').hidden = !sus.length;
+  const byKey = new Map();
+  for (const s of sus) {
+    const k = s.msg + '.' + s.sig;
+    if (!byKey.has(k)) byKey.set(k, { ...s, vals: [] });
+    byKey.get(k).vals.push(s.text);
+  }
+  $('susOut').innerHTML = [...byKey.entries()].map(([k, s]) =>
+    `<span class="chip sus" data-k="${esc(k)}" title="${esc(s.msg)} · 首次 ${fmtT(s.t)}"><span>${esc(s.sig)}</span><b>${esc(s.vals.join(' / '))}</b></span>`).join('');
+  $('susOut').querySelectorAll('.chip').forEach(c => c.onclick = () => {
+    const x = INDEX.find(e => e.key === c.dataset.k); if (x) addSig(x);
+  });
+}
+
+// ---- 信号搜索 ----
+let INDEX = [];
+function buildIndex() {
+  INDEX = [];
+  if (!DBC) return;
+  for (const m of DBC.msgs) {
+    const n = (LOG.byId.get(keyOf(m)) || []).length;
+    for (const s of m.sigs) INDEX.push({ key: m.name + '.' + s.n, m, s, n, text: (s.n + ' ' + m.name + ' ' + (s.c || '')).toLowerCase() });
+  }
+}
+
+let act = 0, hits = [];
+function searchSig() {
+  const q = $('sq').value.trim().toLowerCase();
+  if (!q) { $('sl').hidden = true; return; }
+  const words = q.split(/\s+/);
+  hits = INDEX.filter(e => words.every(w => e.text.includes(w)))
+    .map(e => { const n = e.s.n.toLowerCase(); return [e, (e.n ? 0 : 4) + (n === q ? 0 : n.startsWith(words[0]) ? 1 : n.includes(words[0]) ? 2 : 3)]; })
+    .sort((a, b) => a[1] - b[1]).map(x => x[0])
+    .slice(0, 80);
+  act = 0;
+  $('sl').hidden = false;
+  $('sl').innerHTML = hits.length ? hits.map((e, i) =>
+    `<div data-i="${i}" class="${i ? '' : 'act'}" style="${e.n ? '' : 'opacity:.5'}">${esc(e.s.n)}${e.s.u ? ` <small style="display:inline">[${esc(e.s.u)}]</small>` : ''}` +
+    `<small>${esc(e.m.name)} · ${e.n ? e.n + ' 帧' : '报文中没有这一帧'}${e.s.c ? ' · ' + esc(e.s.c.replace(/\s+/g, ' ')) : ''}</small></div>`).join('')
+    : '<div class="hint">没有匹配的信号</div>';
+  $('sl').querySelectorAll('[data-i]').forEach(d => d.onmousedown = e => { e.preventDefault(); pickHit(+d.dataset.i); });
+}
+function pickHit(i) {
+  if (!hits[i]) return;
+  addSig(hits[i]);
+  $('sq').value = '';
+  $('sl').hidden = true;
+}
+$('sq').addEventListener('input', searchSig);
+$('sq').addEventListener('focus', searchSig);
+$('sq').addEventListener('blur', () => setTimeout(() => $('sl').hidden = true, 150));
+$('sq').addEventListener('keydown', e => {
+  const rows = $('sl').querySelectorAll('[data-i]');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    act = Math.max(0, Math.min(rows.length - 1, act + (e.key === 'ArrowDown' ? 1 : -1)));
+    rows.forEach((r, i) => r.classList.toggle('act', i === act));
+    rows[act] && rows[act].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') { e.preventDefault(); pickHit(act); }
+  else if (e.key === 'Escape') $('sl').hidden = true;
+});
+
+// ---- 曲线 ----
+function addSig(e, quiet) {
+  if (SIGS.some(s => s.key === e.key)) return;
+  const d = CanLog.decodeSignal(LOG, e.m, e.s);
+  SIGS.push({ key: e.key, name: e.s.n, unit: e.s.u, t: d.t, v: d.v, raw: d.raw, vt: e.s.vt, step: !!e.s.vt || e.s.bl <= 3, msg: e.m.name });
+  if (!quiet) renderSigs();
+}
+function renderSigs() {
+  if (!plot) plot = new Plot($('plot'));
+  plot.set(SIGS, LOG ? LOG.dur : 1, SIGS.length > 1);
+  $('chips').innerHTML = SIGS.map((s, i) =>
+    `<span class="chip" title="${esc(s.msg)}${s.t.length ? '' : ' · 报文中没有数据'}"><i style="background:${s.color}"></i><span>${esc(s.name)}</span>` +
+    `${s.t.length ? '' : '<b>无数据</b>'}<b data-i="${i}" style="cursor:pointer">✕</b></span>`).join('');
+  $('chips').querySelectorAll('b[data-i]').forEach(b => b.onclick = () => { SIGS.splice(+b.dataset.i, 1); renderSigs(); });
+}
+$('zin').onclick = () => plot && plot.zoom(0.5);
+$('zout').onclick = () => plot && plot.zoom(2);
+$('zall').onclick = () => plot && plot.reset();
+$('hinc').onclick = () => { plotH = plot.geom().H * 1.25; plot.setHeight(plotH); };
+$('hdec').onclick = () => { plotH = Math.max(200, plot.geom().H / 1.25); plot.setHeight(plotH); };
+$('clr').onclick = () => { SIGS = []; renderSigs(); };
+
+$('file').addEventListener('change', e => openFile(e.target.files[0]));
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
+
+// ================= 加载数据 =================
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unlock(enc, pin) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(enc.salt), iterations: enc.iter },
     base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+  let pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+  if (enc.v === 2) pt = await new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
 (async () => {
-  if (MODE === 'pub') {
-    start(await (await fetch('data.json', { cache: 'no-cache' })).json());
-    return;
-  }
-  $('tag').hidden = false;
-  $('lock').hidden = false;
   const enc = await (await fetch('data.enc.json', { cache: 'no-cache' })).json();
   const tryPin = async (pin, saved) => {
     $('pinErr').textContent = '验证中…';
     $('pin').disabled = true;
-    try {
-      start(await unlock(enc, pin));
-      store.set('sessionStorage', 'dtc_pin', pin);
-    } catch (e) {
+    let data;
+    try { data = await unlock(enc, pin); } catch (e) {
       $('pinErr').textContent = saved ? '' : '密码错误，请重试';
       $('pin').disabled = false;
       $('pin').value = '';
       $('pin').focus();
+      return;
     }
+    store.set('sessionStorage', 'dtc_pin', pin);
+    start(data);
   };
   const saved = store.get('sessionStorage', 'dtc_pin');
   if (saved) tryPin(saved, true); else $('pin').focus();
