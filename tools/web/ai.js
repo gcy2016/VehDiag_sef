@@ -1,0 +1,277 @@
+// AI 助手：使用者自己填写 API Key，浏览器直接调用所选大模型（OpenAI 兼容接口 / Claude 原生接口）。
+// Key 与设置只存在本机浏览器 localStorage；提问时附带由网页按固定规则整理的当前数据（文字，可先查看修改）。
+const AI = (() => {
+  const PRESETS = [
+    { id: 'claude', name: 'Claude（Anthropic）', proto: 'anthropic', url: 'https://api.anthropic.com/v1/messages', model: 'claude-opus-5-5' },
+    { id: 'deepseek', name: 'DeepSeek', proto: 'openai', url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+    { id: 'qwen', name: '通义千问（阿里云百炼）', proto: 'openai', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+    { id: 'kimi', name: 'Kimi（月之暗面）', proto: 'openai', url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k' },
+    { id: 'glm', name: '智谱 GLM', proto: 'openai', url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+    { id: 'doubao', name: '豆包（火山方舟）', proto: 'openai', url: 'https://ark.cn-beijing.volces.com/api/v3', model: '' },
+    { id: 'openai', name: 'OpenAI', proto: 'openai', url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    { id: 'custom', name: '其他（OpenAI 兼容接口）', proto: 'openai', url: '', model: '' },
+  ];
+  // 支持服务端安全回退（refusal 时自动换模型）的 Claude 模型
+  const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'];
+  const SYSTEM = '你是资深的汽车电子电气与售后诊断工程师，熟悉 CAN / CAN FD 总线、UDS 诊断（ISO 14229）、ISO-TP 和各类整车控制器。' +
+    '用户会给你网页从报文中整理出的数据（故障码、诊断过程、信号变化、报文内容）以及诊断问卷里的解释，并提出问题。' +
+    '请结合这些数据和汽车诊断通用知识回答：先给结论，再按可能性从高到低列出可能原因，然后给出具体可操作的排查步骤和注意事项。' +
+    '数据不足以下结论时直接说明还需要什么数据或测量，不要编造数据里没有的数值。用中文回答，条理清晰、简洁。';
+  const KEY = 'ai_cfg';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
+  const store = c => { try { if (c) localStorage.setItem(KEY, JSON.stringify(c)); else localStorage.removeItem(KEY); } catch (e) {} };
+
+  // ---------- 数据整理（纯规则，不调用模型） ----------
+  const num = v => Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)));
+  const lower = (t, x) => { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; };
+
+  function sigText(s, x0, x1) {
+    const a = lower(s.t, x0), b = lower(s.t, x1 + 1e-9);
+    const head = `- ${s.name}${s.unit ? ` [${s.unit}]` : ''}（报文 ${s.msg}）`;
+    if (b <= a) return head + '：该时间段内无数据';
+    const txt = k => (s.vt && s.raw && s.vt[s.raw[k]] !== undefined ? `(${s.vt[s.raw[k]]})` : '');
+    if (s.step) {                                     // 状态类：列出每次变化
+      const ch = [a];
+      for (let k = a + 1; k < b; k++) if (s.v[k] !== s.v[k - 1]) ch.push(k);
+      const list = ch.slice(0, 25).map(k => `${s.t[k].toFixed(3)}s=${num(s.v[k])}${txt(k)}`).join('；');
+      return `${head}：${ch.length > 1 ? `共变化 ${ch.length - 1} 次：` : '始终为 '}${list}${ch.length > 25 ? '；…' : ''}`;
+    }
+    let mn = a, mx = a, sum = 0;
+    for (let k = a; k < b; k++) { if (s.v[k] < s.v[mn]) mn = k; if (s.v[k] > s.v[mx]) mx = k; sum += s.v[k]; }
+    const n = b - a, step = Math.max(1, Math.floor(n / 10)), pts = [];
+    for (let k = a; k < b; k += step) pts.push(`${s.t[k].toFixed(2)}s:${num(s.v[k])}`);
+    return `${head}：${n} 个采样点，最小 ${num(s.v[mn])}（${s.t[mn].toFixed(3)}s），最大 ${num(s.v[mx])}（${s.t[mx].toFixed(3)}s），` +
+      `平均 ${num(sum / n)}，首 ${num(s.v[a])}，末 ${num(s.v[b - 1])}\n  采样：${pts.slice(0, 12).join('，')}`;
+  }
+
+  // st: {view, model, dtcItem, dtcQuery, log, logName, dbc, dtcs, events, sigs, win, trace}
+  function summarize(st) {
+    const L = [];
+    if (st.model) L.push(`车型 / 问卷：${st.model}`);
+    if (st.view === 'dtc') {
+      const it = st.dtcItem;
+      if (it) {
+        L.push(`查询的故障码：${it.d}（高中字节 ${it.hm}，低字节 ${it.l}）`);
+        L.push(`问卷故障描述：${it.desc || '（未填写）'}`, `问卷可能原因：${it.cause || '（未填写）'}`, `问卷维修建议：${it.fix || '（未填写）'}`);
+      } else if (st.dtcQuery) L.push(`查询的故障码：${st.dtcQuery}（问卷中没有找到）`);
+      return L.join('\n');
+    }
+    if (!st.log) { L.push('（尚未打开报文）'); return L.join('\n'); }
+    L.push(`报文文件：${st.logName}，时长 ${st.log.dur.toFixed(2)} s，${st.log.n} 帧；DBC：${st.dbc ? st.dbc.name : '未加载'}`);
+    if (st.dtcs && st.dtcs.length) {
+      L.push('', '【识别到的故障码】');
+      for (const d of st.dtcs) {
+        L.push(`- ${d.code}（${d.b}）来自 ${d.ecu}，${d.src}，状态 0x${d.st.toString(16).toUpperCase().padStart(2, '0')}${d.statusText ? ' ' + d.statusText : ''}，` +
+          `首次 ${d.t.toFixed(3)}s${d.n > 1 ? `，共 ${d.n} 次` : ''}`);
+        if (d.it) L.push(`  问卷：${d.it.desc || ''}；可能原因：${d.it.cause || ''}；维修建议：${d.it.fix || ''}`);
+      }
+    } else L.push('', '【识别到的故障码】无（报文中没有读码应答，也没有广播的故障码信号）');
+    if (st.events && st.events.length) {
+      L.push('', '【诊断过程】');
+      for (const e of st.events.slice(0, 30)) L.push(`- ${e.t.toFixed(3)}s ${e.ecu} ${e.text}`);
+    }
+    if (st.sigs && st.sigs.length) {
+      const [x0, x1] = st.win;
+      L.push('', `【信号曲线】时间窗口 ${x0.toFixed(3)}–${x1.toFixed(3)} s`);
+      for (const s of st.sigs) L.push(sigText(s, x0, x1));
+    }
+    if (st.trace) L.push('', '【选中的报文】', st.trace);
+    let out = L.join('\n');
+    if (out.length > 15000) out = out.slice(0, 15000) + '\n…（数据过长，已截断）';
+    return out;
+  }
+
+  // ---------- 调用模型（流式） ----------
+  async function* sse(resp) {
+    const rd = resp.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (line.startsWith('data:')) yield line.slice(5).trim();
+      }
+    }
+  }
+
+  async function chat(cfg, messages, onText) {
+    let resp;
+    try {
+      if (cfg.proto === 'anthropic') {
+        const body = { model: cfg.model, max_tokens: 16000, stream: true, system: SYSTEM, messages };
+        const headers = { 'content-type': 'application/json', 'x-api-key': cfg.key, 'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true' };
+        if (FALLBACK_MODELS.includes(cfg.model)) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
+        resp = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(body) });
+      } else {
+        const url = /\/chat\/completions\/?$/.test(cfg.url) ? cfg.url : cfg.url.replace(/\/+$/, '') + '/chat/completions';
+        resp = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfg.key },
+          body: JSON.stringify({ model: cfg.model, stream: true, messages: [{ role: 'system', content: SYSTEM }, ...messages] }) });
+      }
+    } catch (e) {
+      throw new Error('无法连接到接口（网络不通，或该厂商不允许网页直接调用 / 跨域被拦截）。请检查接口地址；如仍不行，需要通过中转服务调用。');
+    }
+    if (!resp.ok) {
+      let msg = '';
+      try { const j = await resp.json(); msg = (j.error && (j.error.message || j.error.type)) || j.message || JSON.stringify(j); } catch (e) {}
+      const hint = resp.status === 401 || resp.status === 403 ? '（API Key 不正确或没有权限）' : resp.status === 404 ? '（接口地址或模型名不正确）' :
+        resp.status === 429 ? '（请求太频繁或额度不足）' : resp.status === 402 ? '（账户余额不足）' : '';
+      throw new Error(`接口返回错误 ${resp.status}${hint}${msg ? '：' + msg : ''}`);
+    }
+    let all = '', stop = '';
+    for await (const d of sse(resp)) {
+      if (d === '[DONE]') break;
+      let j; try { j = JSON.parse(d); } catch (e) { continue; }
+      let t = '';
+      if (cfg.proto === 'anthropic') {
+        if (j.type === 'content_block_delta' && j.delta && j.delta.type === 'text_delta') t = j.delta.text;
+        else if (j.type === 'message_delta' && j.delta) stop = j.delta.stop_reason || stop;
+        else if (j.type === 'error') throw new Error('模型返回错误：' + ((j.error && j.error.message) || '未知错误'));
+      } else {
+        const c = j.choices && j.choices[0];
+        t = (c && c.delta && c.delta.content) || '';
+        if (j.error) throw new Error('模型返回错误：' + (j.error.message || JSON.stringify(j.error)));
+      }
+      if (t) { all += t; onText(all); }
+    }
+    if (stop === 'refusal') { all += (all ? '\n\n' : '') + '（模型拒绝回答该问题）'; onText(all); }
+    if (stop === 'max_tokens') { all += '\n\n（回答过长被截断）'; onText(all); }
+    return all;
+  }
+
+  // 极简 Markdown：标题 / 粗体 / 列表 / 代码
+  function md(s) {
+    return esc(s).replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c.replace(/^\w*\n/, '')}</pre>`)
+      .replace(/^#{1,6}\s*(.+)$/gm, '<b class="h">$1</b>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
+  }
+
+  const CSS = `
+  .ai .bar2 { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .ai .bar2 .sp { flex: 1; }
+  .ai button.b { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
+  .ai button.p { border: 0; background: var(--blue); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 15px; cursor: pointer; }
+  .ai button:disabled { opacity: .5; cursor: default; }
+  .ai .cfg { background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; font-size: 14px; }
+  .ai .cfg label { display: block; margin: 6px 0 2px; color: var(--muted); font-size: 13px; }
+  .ai .cfg input, .ai .cfg select { width: 100%; font-size: 14px; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; }
+  .ai .cfg .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .ai .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; line-height: 1.6; }
+  .ai details.ctx { margin-bottom: 10px; font-size: 14px; }
+  .ai details.ctx summary { cursor: pointer; color: var(--blue); }
+  .ai details.ctx textarea { width: 100%; height: 220px; margin-top: 6px; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px; }
+  .ai .msgs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .ai .m { border-radius: 12px; padding: 8px 12px; font-size: 15px; line-height: 1.7; max-width: 92%; word-break: break-word; }
+  .ai .m.u { align-self: flex-end; background: var(--blue); color: #fff; white-space: pre-wrap; }
+  .ai .m.a { align-self: flex-start; background: #f3f6fa; }
+  .ai .m.a b.h { display: block; margin-top: 4px; color: var(--blue-d); }
+  .ai .m.a pre { background: #fff; padding: 6px 8px; border-radius: 8px; overflow: auto; font-size: 12.5px; }
+  .ai .m.e { align-self: stretch; background: #fdecea; color: #a52714; font-size: 14px; }
+  .ai .qs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .ai .qs span { border: 1.5px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 13px; cursor: pointer; background: #fff; }
+  .ai .in { display: flex; gap: 8px; }
+  .ai .in textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 160px; font-size: 15px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 12px; outline: none; resize: vertical; font-family: inherit; }
+  .ai .in textarea:focus { border-color: var(--blue); }`;
+
+  // box：容器；getState()：返回 summarize 所需的当前状态
+  function mount(box, getState) {
+    const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+    box.classList.add('ai');
+    box.innerHTML = `
+      <div class="bar2"><span class="sp"></span><button class="b" data-a="new">新对话</button><button class="b" data-a="cfg">⚙️ 设置</button></div>
+      <div class="cfg" hidden>
+        <label>模型厂商</label><select data-f="preset">${PRESETS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+        <label>接口地址</label><input data-f="url" spellcheck="false" autocomplete="off">
+        <label>模型名</label><input data-f="model" spellcheck="false" autocomplete="off" placeholder="以厂商文档为准，如 deepseek-chat">
+        <label>API Key</label><input data-f="key" type="password" spellcheck="false" autocomplete="off" placeholder="在厂商开放平台创建">
+        <div class="row"><button class="p" data-a="save">保存</button><button class="b" data-a="del">清除 Key</button></div>
+        <div class="note">Key 只保存在这台设备的浏览器里，不会上传到本网站；提问时由浏览器直接发给所选厂商，按你的账户计费。
+          提问会把下方“附带的数据”（故障码、信号变化等文字）一并发给厂商。个别厂商不允许网页直接调用，会提示无法连接，需要通过中转服务调用。</div>
+      </div>
+      <details class="ctx"><summary>附带的数据（发送前可查看、修改）</summary>
+        <div style="margin:6px 0"><label style="font-size:13px"><input type="checkbox" data-f="use" checked> 提问时附带当前数据</label>
+        <button class="b" data-a="ref" style="margin-left:8px">按当前页面重新整理</button></div>
+        <textarea data-f="ctx" spellcheck="false"></textarea>
+      </details>
+      <div class="msgs"></div>
+      <div class="qs"><span>这些故障码可能是什么原因？</span><span>下一步该怎么排查？</span><span>解释一下选中的报文</span><span>信号变化正常吗？</span></div>
+      <div class="in"><textarea data-f="q" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
+        <div style="display:flex;flex-direction:column;gap:6px"><button class="p" data-a="send" style="flex:1">发送</button><button class="b" data-a="copy" title="复制“数据 + 问题”，粘贴到其他 AI 使用">📋 复制</button></div></div>
+      <div class="note" data-f="tip"></div>`;
+    const $f = n => box.querySelector(`[data-f="${n}"]`), $a = n => box.querySelector(`[data-a="${n}"]`);
+    const cfgBox = box.querySelector('.cfg'), msgs = box.querySelector('.msgs');
+    let cfg = load(), hist = [], sentCtx = '', ctxDirty = false, busy = false;
+
+    const fillCfg = () => {
+      const p = PRESETS.find(x => x.id === (cfg && cfg.preset)) || PRESETS[0];
+      $f('preset').value = p.id;
+      $f('url').value = cfg ? cfg.url : p.url; $f('model').value = cfg ? cfg.model : p.model; $f('key').value = cfg ? cfg.key : '';
+    };
+    const tip = () => { $f('tip').textContent = cfg && cfg.key ? `当前：${(PRESETS.find(x => x.id === cfg.preset) || {}).name || ''} · ${cfg.model}` : '还没有设置 API Key：点“⚙️ 设置”填写；没有 Key 也可以点“📋 复制”，把数据和问题粘贴到其他 AI 里使用。'; };
+    $f('preset').onchange = () => { const p = PRESETS.find(x => x.id === $f('preset').value); $f('url').value = p.url; $f('model').value = p.model; };
+    $a('cfg').onclick = () => { cfgBox.hidden = !cfgBox.hidden; if (!cfgBox.hidden) fillCfg(); };
+    $a('save').onclick = () => {
+      const p = PRESETS.find(x => x.id === $f('preset').value);
+      const c = { preset: p.id, proto: p.proto, url: $f('url').value.trim(), model: $f('model').value.trim(), key: $f('key').value.trim() };
+      if (!c.url || !c.model || !c.key) { alert('请填写接口地址、模型名和 API Key'); return; }
+      cfg = c; store(cfg); cfgBox.hidden = true; tip();
+    };
+    $a('del').onclick = () => { if (cfg) { cfg.key = ''; store(cfg.url ? cfg : null); } $f('key').value = ''; tip(); };
+    $a('new').onclick = () => { hist = []; sentCtx = ''; msgs.innerHTML = ''; };
+    const refresh = () => { $f('ctx').value = summarize(getState()); ctxDirty = false; };
+    $a('ref').onclick = refresh;
+    $f('ctx').oninput = () => { ctxDirty = true; };
+    box.querySelector('details.ctx').ontoggle = e => { if (e.target.open && !ctxDirty) refresh(); };
+    box.querySelectorAll('.qs span').forEach(s => s.onclick = () => { $f('q').value = s.textContent; $f('q').focus(); });
+
+    const bubble = (cls, html) => { const d = document.createElement('div'); d.className = 'm ' + cls; d.innerHTML = html; msgs.appendChild(d); return d; };
+    const compose = q => {
+      if (!ctxDirty) refresh();
+      const ctx = $f('use').checked ? $f('ctx').value.trim() : '';
+      const extra = ctx && ctx !== sentCtx ? (sentCtx ? '【数据已更新】\n' : '【当前数据】\n') + ctx + '\n\n【问题】\n' : '';
+      return { text: extra + q, ctx };
+    };
+    async function send() {
+      const q = $f('q').value.trim();
+      if (!q || busy) return;
+      if (!cfg || !cfg.key) { cfgBox.hidden = false; fillCfg(); alert('请先在“设置”里填写 API Key；没有 Key 可以点“📋 复制”粘贴到其他 AI 使用。'); return; }
+      const { text, ctx } = compose(q);
+      busy = true; $a('send').disabled = true;
+      bubble('u', esc(q));
+      const a = bubble('a', '<span style="color:var(--muted)">思考中…</span>');
+      hist.push({ role: 'user', content: text });
+      $f('q').value = '';
+      try {
+        const ans = await chat(cfg, hist, t => { a.innerHTML = md(t); });
+        if (!ans) a.innerHTML = '<span style="color:var(--muted)">（没有返回内容）</span>';
+        hist.push({ role: 'assistant', content: ans || '（无回答）' });
+        sentCtx = ctx || sentCtx;
+      } catch (e) {
+        hist.pop();
+        a.remove();
+        bubble('e', esc(e.message || e));
+        $f('q').value = q;
+      }
+      busy = false; $a('send').disabled = false;
+      a.scrollIntoView && a.scrollIntoView({ block: 'nearest' });
+    }
+    $a('send').onclick = send;
+    $f('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+    $a('copy').onclick = async () => {
+      if (!ctxDirty) refresh();
+      const ctx = $f('use').checked ? $f('ctx').value.trim() : '';
+      const text = SYSTEM + '\n\n' + (ctx ? '【当前数据】\n' + ctx + '\n\n' : '') + '【问题】\n' + ($f('q').value.trim() || '（请在这里写下你的问题）');
+      try { await navigator.clipboard.writeText(text); $a('copy').textContent = '✅ 已复制'; }
+      catch (e) { $f('ctx').value = text; box.querySelector('details.ctx').open = true; $f('ctx').select(); $a('copy').textContent = '请手动复制'; }
+      setTimeout(() => $a('copy').textContent = '📋 复制', 1500);
+    };
+    tip();
+  }
+
+  return { mount, summarize, chat, PRESETS };
+})();
+if (typeof module !== 'undefined') module.exports = AI;

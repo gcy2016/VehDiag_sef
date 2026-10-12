@@ -19,6 +19,7 @@
   - 按 DBC 画信号曲线：每个信号一条泳道、各自 Y 轴，上下均分；滚轮/双指缩放、拖动平移、双击复位，悬停看数值
   - 报文和别的 DBC 更匹配时会提示车型可能选错，也可以手动换 DBC
   - 报文提取（类似 CANalyzer Trace）：按 ID / 范围 / 报文名筛选；点选一行，DBC 报文显示各信号值，诊断报文说明 ISO-TP 帧类型并按通用诊断知识解释完整请求 / 应答（如 7F 负响应的否定码含义），知识表在 `tools/uds.json`
+- **AI 助手**：接入任意大模型（DeepSeek / 通义千问 / Kimi / 智谱 / 豆包 / OpenAI / Claude，或任意 OpenAI 兼容接口），使用者在“设置”里自备 API Key（只存在本机浏览器）。提问时自动附带网页整理好的当前数据（故障码与问卷解释、诊断过程、曲线窗口内的信号变化、选中的报文），发送前可查看修改；没有 Key 时可“📋 复制”粘贴到其他 AI 使用。代码在 `tools/web/ai.js`
 
 车型与 DBC 的对应见 `tools/dbc_map.json`：
 
@@ -34,7 +35,7 @@
 ## 目录
 - `source/` 加密后的原始文件（Excel 每个 Sheet = 一个车型；`*.dbc.enc` 为 DBC）
 - `tools/build.py` 加解密与生成网页；`tools/template.html` 加密版页面；`tools/template_pub.html` 公开版页面（不含报文分析）
-- `tools/web/canlog.js` 报文读取、DBC 解码、故障码识别；`tools/web/plot.js` 曲线；生成时内联进页面
+- `tools/web/canlog.js` 报文读取、DBC 解码、故障码识别；`tools/web/plot.js` 曲线；`tools/web/ai.js` AI 助手；生成时内联进页面
 - `tools/dbc.py` DBC 解析；`tools/dbc_map.json` 车型 → DBC；`tools/zh_map.json` 英文描述的中文对照
 - `tools/analyze.py` 命令行报文分析（规则与网页相同，在对话里分析报文用）
 - `docs/` 生成的网站（GitHub Pages 发布这个目录）
