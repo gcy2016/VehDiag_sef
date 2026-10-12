@@ -12,3 +12,9 @@
 
 不要把解密后的 DBC、Excel 或报文明文提交到仓库（`.gitignore` 已排除 `*.dbc`、`*.xlsx`、`*.blf`、`*.asc`）。
 改了 `tools/template.html` 或 `tools/web/*.js` 后，需要网站密码（6 位）重新生成 `docs/`：`python tools/build.py --pin 网站密码`。
+
+## 需要在 GitHub 网页上操作时（合并 PR、改设置等）
+默认交给 muse：在相关仓库开一个 issue，标题以“muse：”开头，正文写清楚链接和逐步操作，最后请 muse 回复并关闭 issue。
+- 不要写 `@muse`（GitHub 上的 muse 账号是无关的陌生人）。
+- 不要在 issue 里写任何密码（仓库是公开的）。
+- 参考：gcy2016/VehDiag_pub#1。
