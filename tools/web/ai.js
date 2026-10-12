@@ -14,7 +14,7 @@ const AI = (() => {
   // 支持服务端安全回退（refusal 时自动换模型）的 Claude 模型
   const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'];
   const SYSTEM = '你是资深的汽车电子电气与售后诊断工程师，熟悉 CAN / CAN FD 总线、UDS 诊断（ISO 14229）、ISO-TP 和各类整车控制器。' +
-    '用户会给你网页从报文中整理出的数据（故障码、诊断过程、信号变化、报文内容）以及诊断问卷里的解释，并提出问题。' +
+    '用户会给你网页从报文中整理出的数据（故障码、诊断过程、信号变化、报文内容，部分页面只有原始报文的十六进制数据）以及诊断问卷里的解释，并提出问题。' +
     '请结合这些数据和汽车诊断通用知识回答：先给结论，再按可能性从高到低列出可能原因，然后给出具体可操作的排查步骤和注意事项。' +
     '数据不足以下结论时直接说明还需要什么数据或测量，不要编造数据里没有的数值。用中文回答，条理清晰、简洁。';
   const KEY = 'ai_cfg';
@@ -58,8 +58,10 @@ const AI = (() => {
       return L.join('\n');
     }
     if (!st.log) { L.push('（尚未打开报文）'); return L.join('\n'); }
-    L.push(`报文文件：${st.logName}，时长 ${st.log.dur.toFixed(2)} s，${st.log.n} 帧；DBC：${st.dbc ? st.dbc.name : '未加载'}`);
-    if (st.dtcs && st.dtcs.length) {
+    L.push(`报文文件：${st.logName}，时长 ${st.log.dur.toFixed(2)} s，${st.log.n} 帧` + (st.dbc === undefined ? '' : `；DBC：${st.dbc ? st.dbc.name : '未加载'}`));
+    if (st.dtcs === undefined) {
+      // 页面不做故障码识别（如纯报文查看版）
+    } else if (st.dtcs.length) {
       L.push('', '【识别到的故障码】');
       for (const d of st.dtcs) {
         L.push(`- ${d.code}（${d.b}）来自 ${d.ecu}，${d.src}，状态 0x${d.st.toString(16).toUpperCase().padStart(2, '0')}${d.statusText ? ' ' + d.statusText : ''}，` +
@@ -77,6 +79,7 @@ const AI = (() => {
       for (const s of st.sigs) L.push(sigText(s, x0, x1));
     }
     if (st.trace) L.push('', '【选中的报文】', st.trace);
+    if (st.frames) L.push('', st.frames);
     let out = L.join('\n');
     if (out.length > 15000) out = out.slice(0, 15000) + '\n…（数据过长，已截断）';
     return out;
@@ -178,7 +181,9 @@ const AI = (() => {
   .ai .in textarea:focus { border-color: var(--blue); }`;
 
   // box：容器；getState()：返回 summarize 所需的当前状态
-  function mount(box, getState) {
+  // opt.qs：快捷问题
+  function mount(box, getState, opt = {}) {
+    const qs = opt.qs || ['这些故障码可能是什么原因？', '下一步该怎么排查？', '解释一下选中的报文', '信号变化正常吗？'];
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     box.classList.add('ai');
     box.innerHTML = `
@@ -198,7 +203,7 @@ const AI = (() => {
         <textarea data-f="ctx" spellcheck="false"></textarea>
       </details>
       <div class="msgs"></div>
-      <div class="qs"><span>这些故障码可能是什么原因？</span><span>下一步该怎么排查？</span><span>解释一下选中的报文</span><span>信号变化正常吗？</span></div>
+      <div class="qs">${qs.map(q => `<span>${esc(q)}</span>`).join('')}</div>
       <div class="in"><textarea data-f="q" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
         <div style="display:flex;flex-direction:column;gap:6px"><button class="p" data-a="send" style="flex:1">发送</button><button class="b" data-a="copy" title="复制“数据 + 问题”，粘贴到其他 AI 使用">📋 复制</button></div></div>
       <div class="note" data-f="tip"></div>`;
