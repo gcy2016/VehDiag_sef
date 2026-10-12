@@ -1,0 +1,7 @@
+# 明文原始文件不进仓库，只提交 source/*.enc
+*.xlsx
+*.xls
+*.dbc
+*.csv
+plain/
+__pycache__/
