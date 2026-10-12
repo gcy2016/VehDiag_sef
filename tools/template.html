@@ -250,7 +250,7 @@
             <div class="trow thead"><span>时间 s</span><span>通道</span><span>ID</span><span>名称</span><span>方向</span><span>长度</span><span>数据</span></div>
             <div class="tview" id="tv" tabindex="0"><div id="tsp"></div></div>
           </div>
-          <div class="selbar">已选 <b id="selN">0</b> 帧（发给 AI 助手）<button id="selMode">多选：关</button><button id="selAll">全选筛选结果</button><button id="selClr">清除选择</button></div>
+          <div class="selbar">已选 <b id="selN">0</b> 帧（发给 AI 助手）<button id="selMode">多选：关</button><button id="selAll">全选筛选结果</button><button id="selClr">清除选择</button><button id="toAI" class="on">📋 复制给 AI 助手</button></div>
           <p class="hint">点一行查看解析：DBC 报文显示各信号值；诊断报文（蓝色加粗）按通用诊断知识解释，如 7F 负响应的含义，↑ ↓ 键切换。挑选报文给 AI：打开“多选”后点一行勾选 / 取消，<b>按住左侧勾选框上下滑动</b>可连续选择（电脑上直接按住拖动），拖到列表边缘会自动滚动；电脑上也可用 Shift+点击 选一段、Ctrl（⌘）+点击 逐条增减。</p>
           <div class="tdet" id="tdet"></div>
         </div>
@@ -763,7 +763,7 @@ $('tAll').onclick = () => { $('tq').value = ''; LOG && filterTrace(); };
 $('tDiag').onclick = () => { $('tq').value = '700-7FF'; LOG && filterTrace(); };
 
 // ================= AI 助手 =================
-AI.mount($('ai'), () => ({
+const AIUI = AI.mount($('ai'), () => ({
   view, model: model && model.model, dtcItem: CURIT, dtcQuery: CURQ,
   log: LOG, logName: LOGNAME, dbc: DBC, dtcs: LASTDTC, events: LASTEV,
   sigs: SIGS, win: plot ? [plot.x0, plot.x1] : [0, LOG ? LOG.dur : 0], trace: PICK.size ? pickedText() : TRTXT,
@@ -803,6 +803,7 @@ async function unlock(enc, pin) {
     if (e.target.value.length === 6) tryPin(e.target.value, false);
   });
 })();
+$('toAI').onclick = () => AIUI.takeData();   // 选好的报文 → 复制并附带到 AI 助手，打开全屏聊天
 </script>
 </body>
 </html>

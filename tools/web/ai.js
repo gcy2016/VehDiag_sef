@@ -156,6 +156,17 @@ const AI = (() => {
   const CSS = `
   .ai .bar2 { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
   .ai .bar2 .sp { flex: 1; }
+  .ai [data-a="close"] { display: none; }
+  /* 全屏模式：点输入框 / 聊天内容后铺满屏幕，“✕ 收起”回到原页面 */
+  .ai.full { position: fixed; inset: 0; z-index: 1000; background: var(--card, #fff); padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; overflow: hidden; }
+  .ai.full [data-a="close"] { display: inline-block; }
+  .ai.full .msgs { flex: 1; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+  .ai.full .in textarea { min-height: 72px; max-height: 32vh; }
+  .ai.full .note[data-f="tip"] { display: none; }
+  .ai.full details.ctx textarea { height: 26vh; }
+  .ai.full .cfg { max-height: 50vh; overflow-y: auto; }
+  .ai .toast { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); background: rgba(31,41,55,.92); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 1001; }
   .ai button.b { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
   .ai button.p { border: 0; background: var(--blue); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 15px; cursor: pointer; }
   .ai button:disabled { opacity: .5; cursor: default; }
@@ -187,7 +198,7 @@ const AI = (() => {
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     box.classList.add('ai');
     box.innerHTML = `
-      <div class="bar2"><span class="sp"></span><button class="b" data-a="new">新对话</button><button class="b" data-a="cfg">⚙️ 设置</button></div>
+      <div class="bar2"><button class="b" data-a="close">✕ 收起</button><span class="sp"></span><button class="b" data-a="new" title="清除聊天记录和输入框内容">🧹 清屏</button><button class="b" data-a="cfg">⚙️ 设置</button></div>
       <div class="cfg" hidden>
         <label>模型厂商</label><select data-f="preset">${PRESETS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <label>接口地址</label><input data-f="url" spellcheck="false" autocomplete="off">
@@ -226,7 +237,20 @@ const AI = (() => {
       cfg = c; store(cfg); cfgBox.hidden = true; tip();
     };
     $a('del').onclick = () => { if (cfg) { cfg.key = ''; store(cfg.url ? cfg : null); } $f('key').value = ''; tip(); };
-    $a('new').onclick = () => { hist = []; sentCtx = ''; msgs.innerHTML = ''; };
+    $a('new').onclick = () => { hist = []; sentCtx = ''; msgs.innerHTML = ''; $f('q').value = ''; };
+    // 全屏 / 收起
+    let backY = 0;                                   // 收起后回到放大前的页面位置
+    const full = on => {
+      if (on === box.classList.contains('full')) return;
+      if (on) backY = window.scrollY;
+      box.classList.toggle('full', on);
+      document.documentElement.style.overflow = on ? 'hidden' : '';
+      if (!on) { $f('q').blur(); window.scrollTo(0, backY); }
+    };
+    $a('close').onclick = () => full(false);
+    $f('q').addEventListener('focus', () => full(true));
+    msgs.addEventListener('click', () => full(true));
+    const toast = t => { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; box.appendChild(d); setTimeout(() => d.remove(), 1800); };
     const refresh = () => { $f('ctx').value = summarize(getState()); ctxDirty = false; };
     $a('ref').onclick = refresh;
     $f('ctx').oninput = () => { ctxDirty = true; };
@@ -247,6 +271,7 @@ const AI = (() => {
       const { text, ctx } = compose(q);
       busy = true; $a('send').disabled = true;
       bubble('u', esc(q));
+      box.querySelector('details.ctx').open = false;   // 发出后收起附带数据，聊天区更大
       const a = bubble('a', '<span style="color:var(--muted)">思考中…</span>');
       hist.push({ role: 'user', content: text });
       $f('q').value = '';
@@ -275,6 +300,18 @@ const AI = (() => {
       setTimeout(() => $a('copy').textContent = '📋 复制', 1500);
     };
     tip();
+    // 页面上的“复制给 AI 助手”按钮：按当前页面整理数据（含选取的报文）、复制到剪贴板、打开全屏聊天
+    async function takeData() {
+      refresh();
+      $f('use').checked = true;
+      let ok = true;
+      try { await navigator.clipboard.writeText($f('ctx').value); } catch (e) { ok = false; }
+      full(true);
+      box.querySelector('details.ctx').open = true;
+      $f('q').focus();
+      toast(ok ? '已复制，并已附带到 AI 助手，输入问题即可发送' : '已附带到 AI 助手，输入问题即可发送');
+    }
+    return { takeData, full };
   }
 
   return { mount, summarize, chat, PRESETS };
