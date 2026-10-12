@@ -129,6 +129,17 @@
   .tview .trow.sel { background: var(--blue); color: #fff; }
   .tview .trow.diag { color: var(--blue-d); background: #f3f7fc; font-weight: 600; }
   .tview .trow.sel.diag { background: var(--blue); color: #fff; }
+  .tview .trow.pick, .tview .trow.pick.diag { background: #d6e5f6; }
+  .tview .trow.pick.sel { background: var(--blue); }
+  /* 多选模式：行左侧勾选框，按住上下滑动可连续选择（触屏只在勾选框上拖动才连选，其余区域照常滚动） */
+  .trace.multi .trow { padding-left: 40px; }
+  .ck { position: absolute; left: 0; top: 0; width: 36px; height: 24px; display: grid; place-items: center; touch-action: none; cursor: pointer; }
+  .ck::before { content: ""; width: 14px; height: 14px; border: 1.5px solid #9aa5b4; border-radius: 4px; background: #fff; }
+  .trow.pick .ck::before { background: var(--blue); border-color: var(--blue); box-shadow: inset 0 0 0 2px #fff; }
+  .trow.sel .ck::before { border-color: #fff; }
+  .selbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 14px; }
+  .selbar button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 13px; cursor: pointer; color: var(--blue-d); }
+  .selbar button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
   .tdet { margin-top: 12px; }
   .tdet .hexg { font: 13px/1.7 ui-monospace, Menlo, Consolas, monospace; background: #f8fafc; border-radius: 10px; padding: 8px 12px; word-break: break-all; }
   .tdet table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
@@ -235,11 +246,12 @@
             <button id="tAll">全部</button><button id="tDiag">仅诊断报文</button>
             <span class="cnt" id="tCnt"></span>
           </div>
-          <div class="trace">
+          <div class="trace" id="trace">
             <div class="trow thead"><span>时间 s</span><span>通道</span><span>ID</span><span>名称</span><span>方向</span><span>长度</span><span>数据</span></div>
             <div class="tview" id="tv" tabindex="0"><div id="tsp"></div></div>
           </div>
-          <p class="hint">点一行查看解析：DBC 报文显示各信号值；诊断报文（蓝色加粗）按通用诊断知识解释，如 7F 负响应的含义。选中后可用 ↑ ↓ 键切换。</p>
+          <div class="selbar">已选 <b id="selN">0</b> 帧（发给 AI 助手）<button id="selMode">多选：关</button><button id="selAll">全选筛选结果</button><button id="selClr">清除选择</button></div>
+          <p class="hint">点一行查看解析：DBC 报文显示各信号值；诊断报文（蓝色加粗）按通用诊断知识解释，如 7F 负响应的含义，↑ ↓ 键切换。挑选报文给 AI：打开“多选”后点一行勾选 / 取消，<b>按住左侧勾选框上下滑动</b>可连续选择（电脑上直接按住拖动），拖到列表边缘会自动滚动；电脑上也可用 Shift+点击 选一段、Ctrl（⌘）+点击 逐条增减。</p>
           <div class="tdet" id="tdet"></div>
         </div>
       </div>
@@ -1503,8 +1515,9 @@ drop.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
 
 // ================= 报文提取（Trace） =================
 const ROW = 24;
-let TIDX = new Uint32Array(0), TSEL = -1, TP = new Map(), MSGBY = new Map();
+let TIDX = new Uint32Array(0), TSEL = -1, TP = new Map(), MSGBY = new Map(), PICK = new Set(), MULTI = false;
 function initTrace() {
+  PICK.clear(); $('selN').textContent = 0;
   TRTXT = '';
   TP = new Map();
   for (const m of CanLog.isotp(LOG)) for (const i of m.fi) TP.set(i, m);
@@ -1550,9 +1563,10 @@ function drawTrace() {
   let h = '';
   for (let k = a; k < b; k++) {
     const i = TIDX[k], id = LOG.id[i], m = MSGBY.get(id), d = LOG.bytes(i);
-    h += `<div class="trow${i === TSEL ? ' sel' : ''}${CanLog.isDiagId(id) ? ' diag' : ''}" style="top:${k * ROW}px" data-i="${i}">` +
+    h += `<div class="trow${i === TSEL ? ' sel' : ''}${PICK.has(i) ? ' pick' : ''}${CanLog.isDiagId(id) ? ' diag' : ''}" style="top:${k * ROW}px" data-i="${i}">` +
       `<span>${LOG.t[i].toFixed(6)}</span><span>CAN${LOG.ch[i]}</span><span>${hexId(id)}</span><span>${m ? esc(m.name) : ''}</span>` +
-      `<span>${LOG.fl[i] & 1 ? 'Tx' : 'Rx'}</span><span>${LOG.fl[i] & 4 ? 'R' : d.length}${LOG.fl[i] & 2 ? ' FD' : ''}</span><span>${hexOf(d, 24)}</span></div>`;
+      `<span>${LOG.fl[i] & 1 ? 'Tx' : 'Rx'}</span><span>${LOG.fl[i] & 4 ? 'R' : d.length}${LOG.fl[i] & 2 ? ' FD' : ''}</span><span>${hexOf(d, 24)}</span>` +
+      (MULTI ? '<i class="ck"></i>' : '') + '</div>';
   }
   $('tsp').innerHTML = h;
 }
@@ -1592,7 +1606,87 @@ function selTrace(i, scroll) {
   if (!scroll && window.innerWidth < 640) $('tdet').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 $('tv').addEventListener('scroll', () => requestAnimationFrame(drawTrace));
-$('tv').addEventListener('click', e => { const r = e.target.closest('.trow'); if (r) selTrace(+r.dataset.i); });
+// 挑选报文：Shift 选一段、Ctrl/⌘ 逐条；“多选”模式下点击勾选，按住勾选框（电脑上任意位置）上下拖动连续选择
+const MAXPICK = 300;
+let drag = null, noClick = false;
+function pickUpd() { $('selN').textContent = PICK.size; drawTrace(); }
+const tv = $('tv');
+tv.addEventListener('click', e => {
+  if (noClick) { noClick = false; return; }
+  const r = e.target.closest('.trow');
+  if (!r) return;
+  const i = +r.dataset.i;
+  if (MULTI) {                                   // 多选：只勾选，不跳到详情
+    if (PICK.has(i)) PICK.delete(i); else if (PICK.size < MAXPICK) PICK.add(i);
+    return pickUpd();
+  }
+  if (e.shiftKey && TSEL >= 0) {
+    let a = TIDX.indexOf(TSEL), b = TIDX.indexOf(i);
+    if (a > b) [a, b] = [b, a];
+    for (let k = a; k <= b && PICK.size < MAXPICK; k++) PICK.add(TIDX[k]);
+  } else if (e.ctrlKey || e.metaKey) {
+    if (PICK.has(i)) PICK.delete(i); else if (PICK.size < MAXPICK) PICK.add(i);
+  }
+  selTrace(i);
+  pickUpd();
+});
+const rowAt = y => { const r = tv.getBoundingClientRect(); return Math.max(0, Math.min(TIDX.length - 1, Math.floor((tv.scrollTop + y - r.top) / ROW))); };
+function applyDrag() {
+  const k = rowAt(drag.y), [a, b] = k < drag.k0 ? [k, drag.k0] : [drag.k0, k];
+  PICK = new Set(drag.base);
+  for (let j = a; j <= b; j++) { if (drag.add) { if (PICK.size < MAXPICK) PICK.add(TIDX[j]); } else PICK.delete(TIDX[j]); }
+  pickUpd();
+}
+function autoScroll() {
+  if (!drag) return;
+  const r = tv.getBoundingClientRect(), edge = 36;
+  if (drag.y < r.top + edge) tv.scrollTop -= Math.ceil((r.top + edge - drag.y) / 3);
+  else if (drag.y > r.bottom - edge) tv.scrollTop += Math.ceil((drag.y - r.bottom + edge) / 3);
+  applyDrag();
+  requestAnimationFrame(autoScroll);
+}
+tv.addEventListener('pointerdown', e => {
+  if (!MULTI || !LOG || e.button > 0) return;
+  const r = e.target.closest('.trow');
+  if (!r || (e.pointerType !== 'mouse' && !e.target.closest('.ck'))) return;   // 触屏：在报文区域滑动 = 滚动列表
+  e.preventDefault();
+  const i = +r.dataset.i;
+  drag = { k0: TIDX.indexOf(i), base: new Set(PICK), add: !PICK.has(i), y: e.clientY };
+  tv.setPointerCapture(e.pointerId);
+  noClick = true;
+  applyDrag();
+  requestAnimationFrame(autoScroll);
+});
+tv.addEventListener('pointermove', e => { if (drag) drag.y = e.clientY; });
+const endDrag = () => { drag = null; setTimeout(() => noClick = false, 0); };
+tv.addEventListener('pointerup', endDrag);
+tv.addEventListener('pointercancel', endDrag);
+$('selMode').onclick = () => {
+  MULTI = !MULTI;
+  $('selMode').textContent = '多选：' + (MULTI ? '开' : '关');
+  $('selMode').classList.toggle('on', MULTI);
+  $('trace').classList.toggle('multi', MULTI);
+  if (LOG) drawTrace();
+};
+$('selAll').onclick = () => { if (!LOG) return; for (let k = 0; k < TIDX.length && PICK.size < MAXPICK; k++) PICK.add(TIDX[k]); pickUpd(); };
+$('selClr').onclick = () => { PICK.clear(); pickUpd(); };
+// 选取的报文 → 发给 AI 的文字：原始帧 + 诊断报文的完整请求 / 应答解释
+function pickedText() {
+  const sel = [...PICK].sort((x, y) => x - y), L = [`共 ${sel.length} 帧（时间 s / 通道 / ID / 报文名 / 方向 / 长度 / 数据）：`], seen = new Set();
+  for (const i of sel) {
+    const m = MSGBY.get(LOG.id[i]);
+    L.push(`${LOG.t[i].toFixed(6)}  CAN${LOG.ch[i]}  ${hexId(LOG.id[i])}  ${m ? m.name : '-'}  ${LOG.fl[i] & 1 ? 'Tx' : 'Rx'}  ${LOG.bytes(i).length}${LOG.fl[i] & 2 ? 'FD' : ''}  ${hexOf(LOG.bytes(i))}`);
+  }
+  const ex = [];
+  for (const i of sel) {
+    const tp = TP.get(i);
+    if (!tp || seen.has(tp)) continue;
+    seen.add(tp);
+    ex.push(`- ${tp.t.toFixed(3)}s ${hexId(tp.id)}：${hexOf(tp.p, 64)} → ${CanLog.udsExplain(tp.p, UDS).join('；')}`);
+  }
+  if (ex.length) L.push('', '其中诊断报文（已拼成完整请求 / 应答）按通用规则的初步解释：', ...ex.slice(0, 80));
+  return L.join('\n');
+}
 $('tv').addEventListener('keydown', e => {
   if (TSEL < 0 || !['ArrowDown', 'ArrowUp'].includes(e.key)) return;
   e.preventDefault();
@@ -1608,7 +1702,7 @@ $('tDiag').onclick = () => { $('tq').value = '700-7FF'; LOG && filterTrace(); };
 AI.mount($('ai'), () => ({
   view, model: model && model.model, dtcItem: CURIT, dtcQuery: CURQ,
   log: LOG, logName: LOGNAME, dbc: DBC, dtcs: LASTDTC, events: LASTEV,
-  sigs: SIGS, win: plot ? [plot.x0, plot.x1] : [0, LOG ? LOG.dur : 0], trace: TRTXT,
+  sigs: SIGS, win: plot ? [plot.x0, plot.x1] : [0, LOG ? LOG.dur : 0], trace: PICK.size ? pickedText() : TRTXT,
 }));
 
 // ================= 加载数据 =================
