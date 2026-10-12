@@ -1608,11 +1608,11 @@ function selTrace(i, scroll) {
 $('tv').addEventListener('scroll', () => requestAnimationFrame(drawTrace));
 // 挑选报文：Shift 选一段、Ctrl/⌘ 逐条；“多选”模式下点击勾选，按住勾选框（电脑上任意位置）上下拖动连续选择
 const MAXPICK = 300;
-let drag = null, noClick = false;
+let drag = null, skipClick = false;   // 按下时已由“拖动选择”处理的，松手后浏览器补发的那次 click 要忽略
 function pickUpd() { $('selN').textContent = PICK.size; drawTrace(); }
 const tv = $('tv');
 tv.addEventListener('click', e => {
-  if (noClick) { noClick = false; return; }
+  if (skipClick) { skipClick = false; return; }
   const r = e.target.closest('.trow');
   if (!r) return;
   const i = +r.dataset.i;
@@ -1646,6 +1646,7 @@ function autoScroll() {
   requestAnimationFrame(autoScroll);
 }
 tv.addEventListener('pointerdown', e => {
+  skipClick = false;
   if (!MULTI || !LOG || e.button > 0) return;
   const r = e.target.closest('.trow');
   if (!r || (e.pointerType !== 'mouse' && !e.target.closest('.ck'))) return;   // 触屏：在报文区域滑动 = 滚动列表
@@ -1653,12 +1654,12 @@ tv.addEventListener('pointerdown', e => {
   const i = +r.dataset.i;
   drag = { k0: TIDX.indexOf(i), base: new Set(PICK), add: !PICK.has(i), y: e.clientY };
   tv.setPointerCapture(e.pointerId);
-  noClick = true;
+  skipClick = true;
   applyDrag();
   requestAnimationFrame(autoScroll);
 });
 tv.addEventListener('pointermove', e => { if (drag) drag.y = e.clientY; });
-const endDrag = () => { drag = null; setTimeout(() => noClick = false, 0); };
+const endDrag = () => { drag = null; };
 tv.addEventListener('pointerup', endDrag);
 tv.addEventListener('pointercancel', endDrag);
 $('selMode').onclick = () => {
