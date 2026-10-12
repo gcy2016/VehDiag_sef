@@ -166,6 +166,12 @@ const AI = (() => {
   .ai.full .note[data-f="tip"] { display: none; }
   .ai.full details.ctx textarea { height: 26vh; }
   .ai.full .cfg { max-height: 50vh; overflow-y: auto; }
+  /* 电脑上：居中大窗口，背后变暗；手机上仍铺满屏幕 */
+  @media (min-width: 900px) {
+    .ai.full { inset: 4vh auto; left: 50%; transform: translateX(-50%); width: min(960px, 92vw); border-radius: 16px;
+      padding: 16px 20px; box-shadow: 0 0 0 100vmax rgba(15,23,42,.45), 0 12px 40px rgba(0,0,0,.25); }
+    .ai.full .m { max-width: 80%; }
+  }
   .ai-modal { position: fixed; inset: 0; z-index: 1003; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; }
   .ai-modal .box { background: #fff; border-radius: 16px; padding: 18px 18px 14px; max-width: 340px; width: 100%; font-size: 15px; line-height: 1.6; }
   .ai-modal .box b { font-size: 17px; }

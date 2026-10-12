@@ -77,6 +77,20 @@
     padding: 12px; border: 1.5px solid var(--line); border-radius: 12px; outline: none; font-family: ui-monospace, Menlo, monospace; }
   .lock input:focus { border-color: var(--blue); }
   .lock .err { color: var(--red); min-height: 24px; margin-top: 8px; font-size: 14px; }
+  /* ---- 电脑 / 平板宽屏适配 ---- */
+  @media (min-width: 900px) {
+    .wrap { max-width: 880px; }
+    body.wide .wrap { max-width: 1440px; }
+  }
+
+  /* 宽屏：报文列表在左、详情在右，点一行右边直接显示 */
+  @media (min-width: 1100px) {
+    .tgrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+    .tgrid .tview { height: 560px; }
+    .tgrid #tdet { margin-top: 0; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    .tgrid #tdet:empty::before { content: "← 点左侧一行查看报文详情"; display: block; color: var(--muted); font-size: 14px; padding: 40px 12px; text-align: center; border: 1.5px dashed var(--line); border-radius: 12px; }
+  }
+  #aiCard { margin-top: 14px; }
   [hidden] { display: none !important; }
 
   /* ---- 数据分析 ---- */
@@ -251,13 +265,16 @@
             <button id="tAll">全部</button><button id="tDiag">仅诊断报文</button>
             <span class="cnt" id="tCnt"></span>
           </div>
+          <div class="tgrid"><div class="tleft">
           <div class="trace" id="trace">
             <div class="trow thead"><span>时间 s</span><span>通道</span><span>ID</span><span>名称</span><span>方向</span><span>长度</span><span>数据</span></div>
             <div class="tview" id="tv" tabindex="0"><div id="tsp"></div></div>
           </div>
           <div class="selbar">已选 <b id="selN">0</b> 帧（发给 AI 助手）<button id="selMode">多选：关</button><button id="selAll">全选筛选结果</button><button id="selClr">清除选择</button><button id="toAI" class="on">📋 复制给 AI 助手</button></div>
           <p class="hint">点一行查看解析：DBC 报文显示各信号值；诊断报文（蓝色加粗）按通用诊断知识解释，如 7F 负响应的含义，↑ ↓ 键切换。挑选报文给 AI：打开“多选”后点一行勾选 / 取消，<b>按住左侧勾选框上下滑动</b>可连续选择（电脑上直接按住拖动），拖到列表边缘会自动滚动；电脑上也可用 Shift+点击 选一段、Ctrl（⌘）+点击 逐条增减。</p>
+          </div>
           <div class="tdet" id="tdet"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1102,6 +1119,12 @@ const AI = (() => {
   .ai.full .note[data-f="tip"] { display: none; }
   .ai.full details.ctx textarea { height: 26vh; }
   .ai.full .cfg { max-height: 50vh; overflow-y: auto; }
+  /* 电脑上：居中大窗口，背后变暗；手机上仍铺满屏幕 */
+  @media (min-width: 900px) {
+    .ai.full { inset: 4vh auto; left: 50%; transform: translateX(-50%); width: min(960px, 92vw); border-radius: 16px;
+      padding: 16px 20px; box-shadow: 0 0 0 100vmax rgba(15,23,42,.45), 0 12px 40px rgba(0,0,0,.25); }
+    .ai.full .m { max-width: 80%; }
+  }
   .ai-modal { position: fixed; inset: 0; z-index: 1003; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; }
   .ai-modal .box { background: #fff; border-radius: 16px; padding: 18px 18px 14px; max-width: 340px; width: 100%; font-size: 15px; line-height: 1.6; }
   .ai-modal .box b { font-size: 17px; }
