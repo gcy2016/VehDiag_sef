@@ -1,5 +1,16 @@
 # 给 Claude 的说明
 
+**当前仓库：VehDiag_sef（Self 自用版）**——用户自己使用，功能最多（故障码查询、报文数据分析、AI 助手，以及对话里用的 `tools/analyze.py`），涉及的加密内容也最多：网站数据 `docs/data.enc.json` 用 6 位网站密码，原始 DBC / 问卷 `source/*.enc` 用原始文件密码（长密码）。
+
+## 四个仓库的定位（同一个用户 gcy2016 的售后诊断工具系列）
+| 仓库 | 含义 | 定位 | 网址 |
+|---|---|---|---|
+| VehDiag_pub | Public 公共版 | 给非专业人员自助查询故障码；没有报文解析和数据分析功能。打开即用，无密码 | https://gcy2016.github.io/VehDiag_pub/ |
+| VehDiag_sef | Self 自用版 | 用户自己用；功能最多，加密内容也最多（网站数据用 6 位网站密码，原始 DBC / 问卷用长的原始文件密码） | https://gcy2016.github.io/VehDiag_sef/ |
+| VehDiag_shr | Share 分享版 | 给有一定专业能力的人查看报文；只能看原始报文（另有 AI 助手），不带 DBC、不做解析。无密码 | https://gcy2016.github.io/VehDiag_shr/ |
+| VehDiag_gnl | General 通用版 | 功能和自用版一致，但仓库里只有代码，DBC、诊断问卷都由使用者自己上传。无密码 | https://gcy2016.github.io/VehDiag_gnl/ |
+
+## 对话里分析报文
 用户会在对话里发来 blf / asc 报文并提问。处理方法：
 
 1. 原始文件密码不在仓库里，向用户要（或用户已在对话中给出），设为环境变量 `VEHDIAG_SRC_KEY`。不要把密码写进任何文件或提交。
