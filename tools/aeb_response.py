@@ -4,7 +4,7 @@
 终点：之后每收到一帧 ESP_LongAccel，就和它之前最近一帧 ACC_AEBTargetDeceleration 比较，
      |ESP_LongAccel| 第一次大于 |目标减速度| 的时刻。
      口径A（字面）：激活后第一次满足就算。
-     口径B（推荐）：排除激活瞬间就已满足的情况，要求 |减速度| 先低于目标、再第一次超过目标。
+     口径B（推荐）：|目标| 达到本次峰值的一半（--ramp）以后才判断，且要求 |减速度| 先低于目标、再第一次超过目标。
      （目标减速度激活时从 -0.4～-2 逐步爬升到 -8/-9，激活前车辆已有少量减速度时，口径A 会得到几 ms 的无效结果。）
 一个日志里有多次激活时，每次单独一行。
 
@@ -67,6 +67,7 @@ def analyze_file(path, db, a):
             while j < len(act) and act[j][1] == 1:
                 j += 1
             tend = act[j][0] if j < len(act) else act[-1][0]
+            peak = max((abs(v) for t, _, v in tgt if t0 <= t <= tend), default=0)
             hit_a = hit_b = None
             armed = False
             for t, _, v in acc:
@@ -77,15 +78,19 @@ def analyze_file(path, db, a):
                     continue
                 if hit_a is None and abs(v) > abs(lt):
                     hit_a = (t, v, lt)
+                if abs(lt) < a.ramp * peak:                 # 目标还在爬升初期，不判
+                    continue
                 if abs(v) <= abs(lt):
                     armed = True
                 if hit_b is None and armed and abs(v) > abs(lt):
                     hit_b = (t, v, lt)
                 if hit_a and hit_b:
                     break
+            a0 = latest(acc, [t for t, _, _ in acc], t0)
             detail = [(t, v, latest(tgt, tt, t), next((r for tq, r, _ in reversed(act) if tq <= t), 0))
                       for t, _, v in acc if t0 - 0.1 <= t <= t0 + a.window]
-            events.append(dict(t0=t0, tend=tend, A=hit_a, B=hit_b, detail=detail,
+            events.append(dict(t0=t0, tend=tend, A=hit_a, B=hit_b, detail=detail, a0=a0,
+                               prev_gap=t0 - events[-1]['tend'] if events else None,
                                v0=latest(spd, st, t0) if spd else None))
     return events, '' if events else '没有 ACC_AEBActive 0→1 跳变'
 
@@ -132,11 +137,15 @@ def write_xlsx(rows, out, a):
             vals = [name, None, kph_label(name)] + [None] * 11 + [msg]
         else:
             ha, hb = e['A'], e['B']
-            note = ''
+            notes = []
+            if e['a0'] is not None and abs(e['a0']) >= a.braking:
+                gap = f"（距上次 AEB 结束 {e['prev_gap']:.1f} s）" if e['prev_gap'] is not None else ''
+                notes.append(f"激活时车辆已在制动（|减速度| {abs(e['a0']):.1f}）{gap}，结果不代表从零开始的制动响应")
             if hb is None:
-                note = '激活期间 |减速度| 未超过目标'
+                notes.append('激活期间 |减速度| 未超过目标')
             elif ha and ha[0] != hb[0]:
-                note = f'激活瞬间目标值仅 {ha[2]:.1f}，原有 |减速度| {abs(ha[1]):.2f} 已大于它，口径A 无参考意义'
+                notes.append(f'激活初期目标值很小（{ha[2]:.1f}），|减速度| 本身的波动就超过了它，口径A 无参考意义')
+            note = '；'.join(notes)
             vals = [name, k, kph_label(name), None if e['v0'] is None else round(e['v0'], 1), round(e['t0'], 6),
                     hb and round(hb[0], 6), hb and f'=(F{r}-E{r})*1000', hb and round(hb[1], 3), hb and round(hb[2], 3),
                     ha and round(ha[0], 6), ha and f'=(J{r}-E{r})*1000', ha and round(ha[1], 3), ha and round(ha[2], 3),
@@ -172,8 +181,9 @@ def write_xlsx(rows, out, a):
         '起点：ACC_AEBActive 从 0 "not Active" 跳变为 1 "Active" 的第一帧时刻；一个日志里多次激活时每次一行（序号）。',
         '终点：每收到一帧 ESP_LongAccel，就和它之前最近一帧 ACC_AEBTargetDeceleration 比较；目标值是负数，两边都取绝对值。',
         '口径A（字面）：激活后第一次满足 |ESP_LongAccel| > |ACC_AEBTargetDeceleration|。',
-        '口径B（推荐）：在口径A基础上排除激活瞬间就已满足的情况，要求 |减速度| 先低于目标、再第一次超过目标。目标减速度在激活时从 -0.4～-2 逐步爬升，'
-        '若激活前车辆已有少量减速度，口径A 会得到几 ms 的无效结果。两种口径相同时说明没有这种情况。',
+        f'口径B（推荐）：只在 |目标减速度| 达到本次激活峰值的 {a.ramp:.0%} 以上之后判断，并要求 |减速度| 先低于目标、再第一次超过目标。'
+        '目标减速度在激活时从 -0.4～-2 逐步爬升，这段时间里 |减速度| 本身的波动就可能超过目标，口径A 会得到几 ms 的无效结果。两种口径相同时说明没有这种情况。',
+        f'备注里“激活时车辆已在制动”指激活时刻 |ESP_LongAccel| ≥ {a.braking:g} m/s²（多为 AEB 刚结束又再次激活），这类结果不代表从零开始的制动响应。',
         '分辨率：结果取帧时刻、不插值，精度约等于 ESP_LongAccel 的报文周期（约 10 ms）。',
         '“起点实际车速”取 ESP_VehicleSpeed 在起点时刻的值，供核对试验车速。各分页为每次激活前后的曲线数据，黄色行为口径B 终点帧。',
     ]
@@ -248,6 +258,8 @@ def main():
     ap.add_argument('--accel', default='GW_15D.ESP_LongAccel')
     ap.add_argument('--speed', default='IBCU_17A.ESP_VehicleSpeed', help='起点车速信号，填空字符串则不取')
     ap.add_argument('--window', type=float, default=0.8, help='分页曲线数据取起点后多少秒（默认 0.8）')
+    ap.add_argument('--ramp', type=float, default=0.5, help='口径B：|目标| 达到本次峰值的多少比例后才开始判断（默认 0.5）')
+    ap.add_argument('--braking', type=float, default=3.0, help='激活时 |减速度| 超过多少 m/s² 视为已在制动，备注提示（默认 3）')
     ap.add_argument('--out', default='AEB制动响应时间.xlsx')
     a = ap.parse_args()
     if not a.src_key:
