@@ -101,6 +101,7 @@ def kph_label(name):
 
 
 def write_xlsx(rows, out, a):
+    """所有结果直接写数值（不用公式）：手机和预览软件不会计算公式，写公式会显示为空。"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from openpyxl.chart import ScatterChart, Reference, Series
@@ -147,8 +148,8 @@ def write_xlsx(rows, out, a):
                 notes.append(f'激活初期目标值很小（{ha[2]:.1f}），|减速度| 本身的波动就超过了它，口径A 无参考意义')
             note = '；'.join(notes)
             vals = [name, k, kph_label(name), None if e['v0'] is None else round(e['v0'], 1), round(e['t0'], 6),
-                    hb and round(hb[0], 6), hb and f'=(F{r}-E{r})*1000', hb and round(hb[1], 3), hb and round(hb[2], 3),
-                    ha and round(ha[0], 6), ha and f'=(J{r}-E{r})*1000', ha and round(ha[1], 3), ha and round(ha[2], 3),
+                    hb and round(hb[0], 6), hb and round((hb[0] - e['t0']) * 1000, 1), hb and round(hb[1], 3), hb and round(hb[2], 3),
+                    ha and round(ha[0], 6), ha and round((ha[0] - e['t0']) * 1000, 1), ha and round(ha[1], 3), ha and round(ha[2], 3),
                     round(e['tend'] - e['t0'], 3), note]
         for c, v in enumerate(vals, 1):
             x = ws.cell(r, c, v)
@@ -169,7 +170,9 @@ def write_xlsx(rows, out, a):
         ws.cell(rr, 1, lab).font = bold
         for col in ('G', 'K'):
             x = ws[f'{col}{rr}']
-            x.value = f'=IFERROR({fn}({col}{r0 + 1}:{col}{last}),"")'
+            vs = [ws[f'{col}{k}'].value for k in range(r0 + 1, last + 1)]
+            vs = [v for v in vs if isinstance(v, (int, float))]
+            x.value = round({'AVERAGE': sum(vs) / len(vs) if vs else 0, 'MIN': min(vs, default=0), 'MAX': max(vs, default=0)}[fn], 1) if vs else ''
             x.font, x.number_format = bold, '0.0'
             x.alignment = Alignment(horizontal='center')
             if col == 'G':
@@ -215,8 +218,9 @@ def write_xlsx(rows, out, a):
                     '|ESP_LongAccel|', '|目标减速度|', 'ACC_AEBActive', '是否超过目标'], 34)
         for i, (t, v, tg, ac) in enumerate(e['detail']):
             rr = 4 + i
-            row = [f'=(B{rr}-{e["t0"]:.6f})*1000', round(t, 6), round(v, 4), None if tg is None else round(tg, 4),
-                   f'=ABS(C{rr})', f'=ABS(D{rr})', ac, f'=IF(AND(G{rr}=1,E{rr}>F{rr}),"是","")']
+            row = [round((t - e['t0']) * 1000, 1), round(t, 6), round(v, 4), None if tg is None else round(tg, 4),
+                   round(abs(v), 4), None if tg is None else round(abs(tg), 4), ac,
+                   '是' if ac == 1 and tg is not None and abs(v) > abs(tg) else '']
             for c, val in enumerate(row, 1):
                 x = d.cell(rr, c, val)
                 x.font, x.border = body, box
