@@ -15,11 +15,16 @@
 
 1. 原始文件密码不在仓库里，向用户要（或用户已在对话中给出），设为环境变量 `VEHDIAG_SRC_KEY`。不要把密码写进任何文件或提交。
 2. 安装依赖：`pip install python-can openpyxl cryptography matplotlib`
+   （如果 PyPI 被网络拦截：`git clone --depth 1 --branch v4.4.2 https://github.com/hardbyte/python-can` 到仓库外，再用 `PYTHONPATH=那个目录` 运行；openpyxl / cryptography / matplotlib 通常已预装。）
 3. 报文等上传文件先复制到仓库外的独立目录再分析。车型不明时先问用户；也可以不带 `--model`，脚本会按 DBC 覆盖率自动选 DBC（这时不对照问卷）。
 4. 运行 `python tools/analyze.py 报文 --model 车型`：看概况、故障码（已对照诊断问卷）、疑似异常信号；
    用 `--find 关键词` 找信号，`--sig 信号... [--t0 --t1] [--plot x.png]` 看具体信号变化。
    用 `--trace [ID / 700-7FF / 报文名] [--t0 --t1]` 列出原始报文，诊断报文附简要解释（否定码等见 `tools/uds.json`）。
-5. 回答时以问卷中的故障描述 / 可能原因 / 维修建议为准，再结合信号变化和汽车诊断通用知识给出排查思路；
+5. 用户要统计 **AEB 制动响应时间**（或说“跑 AEB 响应 / AEB 统计”）时，运行
+   `python tools/aeb_response.py 报文目录或文件... --model 车型 --out 结果.xlsx`，把生成的 Excel 发给用户，并在回复里列出各车速的时间差。
+   起点 = ACC_AEBActive 0→1；终点 = |ESP_LongAccel| 第一次超过它之前最近一帧的 |ACC_AEBTargetDeceleration|。
+   口径B（推荐）排除激活瞬间就已满足的情况，口径A 为字面结果，两者不同时要向用户说明。信号可用 `--active/--target/--accel/--speed 报文名.信号名` 替换。
+6. 回答时以问卷中的故障描述 / 可能原因 / 维修建议为准，再结合信号变化和汽车诊断通用知识给出排查思路；
    问卷只收录制动控制模块，其他模块的故障码要说明“问卷未收录、仅按通用知识判断”。
 
 不要把解密后的 DBC、Excel 或报文明文提交到仓库（`.gitignore` 已排除 `*.dbc`、`*.xlsx`、`*.blf`、`*.asc`）。

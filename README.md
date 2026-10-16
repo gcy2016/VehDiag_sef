@@ -38,6 +38,7 @@
 - `tools/web/canlog.js` 报文读取、DBC 解码、故障码识别；`tools/web/plot.js` 曲线；`tools/web/ai.js` AI 助手；生成时内联进页面
 - `tools/dbc.py` DBC 解析；`tools/dbc_map.json` 车型 → DBC；`tools/zh_map.json` 英文描述的中文对照
 - `tools/analyze.py` 命令行报文分析（规则与网页相同，在对话里分析报文用）
+- `tools/aeb_response.py` AEB 制动响应时间统计：ACC_AEBActive 激活 → |ESP_LongAccel| 超过目标减速度的时间差，批量输出 Excel
 - `docs/` 生成的网站（GitHub Pages 发布这个目录）
 
 ## 常用操作
@@ -58,6 +59,7 @@ python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利             
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --find 轮速        # 搜索信号
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --sig ESP_VehicleSpeed --plot 曲线.png --csv 数据.csv
 python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --trace 700-7FF          # 报文列表，诊断报文附解释
+python tools/aeb_response.py 报文目录/ --model 四代逸动HEV伯特利 --out AEB.xlsx      # AEB 制动响应时间统计（批量，输出 Excel）
 ```
 
 ## 发布
