@@ -7,7 +7,7 @@
 |---|---|---|---|
 | VehDiag_pub | Public 公共版 | 给非专业人员自助查询故障码；没有报文解析和数据分析功能。打开即用，无密码 | https://gcy2016.github.io/VehDiag_pub/ |
 | VehDiag_sef | Self 自用版 | 用户自己用；功能最多，加密内容也最多（网站数据用 6 位网站密码，原始 DBC / 问卷用长的原始文件密码） | https://gcy2016.github.io/VehDiag_sef/ |
-| VehDiag_shr | Share 分享版 | 给有一定专业能力的人查看报文；只能看原始报文（另有 AI 助手），不带 DBC、不做解析。无密码 | https://gcy2016.github.io/VehDiag_shr/ |
+| VehDiag_shr | Share 分享版 | 给有一定专业能力的人查看报文；只能看原始报文（另有 AI 助手），不带 DBC、不做解析；另有故障码查询（诊断问卷由使用者自己上传，同 GNL）。无密码 | https://gcy2016.github.io/VehDiag_shr/ |
 | VehDiag_gnl | General 通用版 | 功能和自用版一致，但仓库里只有代码，DBC、诊断问卷都由使用者自己上传。无密码 | https://gcy2016.github.io/VehDiag_gnl/ |
 
 ## 对话里分析报文
