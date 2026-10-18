@@ -97,6 +97,10 @@
   .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 22px 12px; text-align: center; color: var(--muted); cursor: pointer; }
   .drop.over { border-color: var(--blue); background: var(--blue-l); }
   .drop b { color: var(--blue); }
+  .drop.flash { animation: flash .5s ease-in-out 3; }
+  @keyframes flash { 50% { border-color: var(--blue); background: var(--blue-l); } }
+  .ld { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .ld button { border: 0; background: none; color: var(--red); cursor: pointer; font-size: 13px; padding: 0 4px; }
   .bar { height: 6px; background: var(--blue-l); border-radius: 3px; overflow: hidden; margin-top: 10px; }
   .bar div { height: 100%; width: 0; background: var(--blue); transition: width .2s; }
   .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
@@ -321,6 +325,13 @@ function start(data) {
   document.querySelectorAll('.fns button').forEach(b => b.onclick = () => show(b.dataset.v));
   const last = DB.models.findIndex(m => m.model === store.get('localStorage', 'dtc_model'));
   if (last >= 0) pick(last, true);
+  LogDB.get().then(v => { if (v && v.data) { RESTORE = v; restoreLog(); } }).catch(() => {});
+}
+let RESTORE = null;   // 上次的报文：车型选好后再加载（解析要用车型对应的 DBC）
+function restoreLog() {
+  if (!RESTORE || !model || LOG || LOADING) return;
+  const v = RESTORE; RESTORE = null;
+  openFile({ name: v.name, arrayBuffer: () => v.data.arrayBuffer() }, true);
 }
 
 function pick(i, silent) {
@@ -331,7 +342,7 @@ function pick(i, silent) {
   $('cur').textContent = model.model;
   store.set('localStorage', 'dtc_model', model.model);
   if ($('q').value) search(); else $('s3').hidden = true;
-  if (LOG) analyze();
+  if (LOG) analyze(); else restoreLog();
   show(view || store.get('localStorage', 'dtc_view') || 'dtc', silent);
 }
 
@@ -346,6 +357,7 @@ function show(v, silent) {
   $('dbcCur').textContent = model.dbc ? 'DBC：' + model.dbc : '该车型暂无 DBC';
   if (v === 'dtc' && !silent) $('q').focus();
   if (v === 'log' && plot) plot.draw();
+  if (v === 'log' && !silent && !LOG && !LOADING) flash($('drop'));   // 还没打开报文：带到“打开报文”并闪一下提示
 }
 
 // ================= 故障码查询 =================
@@ -407,25 +419,66 @@ const hexId = id => '0x' + (id & 0x1FFFFFFF).toString(16).toUpperCase() + (id & 
 const fmtT = t => t.toFixed(3) + ' s';
 const BRAKE = /IBCU|ESP|ESC|EPB|ABS|IPB|EBB|EHB|RBM|BCU/i;
 
-async function openFile(f) {
+function flash(el) {
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+// 报文存在本机浏览器（IndexedDB，只留最近一个），切换功能、刷新或下次打开都不用重新选择；点“清除”才删除
+const LogDB = {
+  open() {
+    return new Promise((ok, no) => {
+      const r = indexedDB.open('sef', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('files');
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((ok, no) => {
+      const tx = db.transaction('files', mode), req = fn(tx.objectStore('files'));
+      tx.oncomplete = () => { db.close(); ok(req.result); }; tx.onerror = tx.onabort = () => { db.close(); no(tx.error); };
+    });
+  },
+  get() { return this.run('readonly', st => st.get('log')); },
+  put(v) { return this.run('readwrite', st => st.put(v, 'log')); },
+  del() { return this.run('readwrite', st => st.delete('log')); },
+};
+let LOADING = false, LOADID = 0, LOGSAVED = false;   // LOADID：读取中又选了新文件时，旧的那次读完直接丢弃
+
+async function openFile(f, restored) {
   if (!f) return;
+  const id = ++LOADID;
+  LOADING = true;
   $('bar').hidden = false;
   const bar = $('bar').firstElementChild;
   bar.style.width = '2%';
-  $('info').innerHTML = `<p class="hint">正在读取 ${esc(f.name)} …</p>`;
+  $('info').innerHTML = `<p class="hint">${restored ? '正在加载上次打开的报文' : '正在读取'} ${esc(f.name)} …</p>`;
   try {
-    LOG = await CanLog.read(f.name, await f.arrayBuffer(), p => bar.style.width = Math.round(p * 100) + '%');
+    const buf = await f.arrayBuffer();
+    const log = await CanLog.read(f.name, buf, p => id === LOADID && (bar.style.width = Math.round(p * 100) + '%'));
+    if (id !== LOADID) return;
+    LOG = log;
     LOGNAME = f.name;
     bar.style.width = '100%';
+    LOGSAVED = !!restored;
+    if (!restored) try { await LogDB.put({ name: f.name, data: new Blob([buf]) }); LOGSAVED = true; } catch (e) {}
     dbcPick = '';
     SIGS = [];
     analyze();
   } catch (e) {
+    if (id !== LOADID) return;
     LOG = null;
     $('info').innerHTML = `<div class="warn">读取失败：${esc(e.message || e)}</div>`;
     $('res').hidden = true;
+    if (restored) LogDB.del().catch(() => {});
   }
+  LOADING = false;
   setTimeout(() => $('bar').hidden = true, 600);
+}
+function clearLog() {
+  LOG = null; LOGNAME = ''; SIGS = [];
+  $('info').innerHTML = ''; $('res').hidden = true;
+  LogDB.del().catch(() => {});
 }
 
 // 各 DBC 能认出多少帧，用于提示车型是否选错
@@ -459,7 +512,9 @@ function analyze() {
   if (unknown.length)
     h += `<details class="hint"><summary>DBC 中没有定义的 ID（${unknown.length} 个）</summary>${unknown.map(id =>
       `${hexId(id)}（${LOG.byId.get(id).length} 帧）`).join('、')}</details>`;
+  h += `<div class="ld">${LOGSAVED ? '报文已记在本机，下次打开不用重新选择' : '⚠️ 报文太大或浏览器不允许，未能记在本机，下次需要重新选择'} <button id="rmLog">清除</button></div>`;
   $('info').innerHTML = h;
+  $('rmLog').onclick = clearLog;
   $('dbcSel').onchange = e => { dbcPick = e.target.value; analyze(); };
   $('res').hidden = false;
   renderDTC();
