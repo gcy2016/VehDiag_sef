@@ -67,8 +67,6 @@
   .sec h3::before { content: ""; display: inline-block; width: 4px; height: 14px; background: var(--blue);
     border-radius: 2px; margin-right: 8px; vertical-align: -1px; }
   .sec .t { white-space: pre-wrap; background: #f8fafc; border-radius: 10px; padding: 10px 12px; font-size: 15px; }
-  .sec details { margin-top: 4px; font-size: 13px; color: var(--muted); }
-  .sec details div { white-space: pre-wrap; }
   .back { border: 0; background: none; color: var(--blue); font-size: 15px; padding: 0; margin-bottom: 10px; cursor: pointer; }
   .tip { background: var(--tip-bg); border: 1.5px solid var(--tip-line); border-radius: 14px; padding: 12px 14px;
     text-align: center; font-weight: 600; margin-bottom: 14px; }
@@ -1403,8 +1401,7 @@ function list(hits, q) {
 }
 
 function sec(title, it, k) {
-  const en = it[k + '_en'] ? `<details><summary>查看英文原文</summary><div>${esc(it[k + '_en'])}</div></details>` : '';
-  return `<div class="sec"><h3>${title}</h3><div class="t">${esc(it[k] || '（表中未填写）')}</div>${en}</div>`;
+  return `<div class="sec"><h3>${title}</h3><div class="t">${esc(it[k] || '（表中未填写）')}</div></div>`;
 }
 
 function detail(it, fromList) {
