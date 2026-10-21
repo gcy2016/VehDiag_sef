@@ -12,7 +12,7 @@
   python tools/analyze.py 报文.blf --dbc CIIA1.5_EV                       # 不指定车型，直接用某个 DBC
   python tools/analyze.py 报文.blf --model A05大陆 --trace 700-7FF [--t0 --t1] # 报文列表（同网页“报文提取”），诊断报文附解释
 """
-import argparse, glob, io, json, os, struct, sys
+import argparse, glob, io, json, os, re, struct, sys
 from collections import Counter, OrderedDict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -55,9 +55,17 @@ def open_log(path):
     import can
     if not path.lower().endswith('.asc'):
         return can.LogReader(path)
+    # python-can 读文件头时会吞掉头部之后的第一行（通常是 Begin Triggerblock）；
+    # 没有这一行的文件会丢第一帧，所以在第一行数据前补一行
+    out, head = [], True
     with open(path, encoding='latin-1') as f:
-        text = ''.join(fix_asc_line(s) for s in f)
-    return can.ASCReader(io.StringIO(text))
+        for s in f:
+            if head and s.strip() and not re.match(r'(date|base|//)\s', s.strip(), re.I):
+                head = False
+                if re.match(r'\d', s.strip()):
+                    out.append('Begin Triggerblock\n')
+            out.append(fix_asc_line(s))
+    return can.ASCReader(io.StringIO(''.join(out)))
 
 
 def read_log(path):
