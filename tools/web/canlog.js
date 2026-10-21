@@ -136,6 +136,7 @@ const CanLog = (() => {
   }
 
   // ---- ASC（Vector 文本日志）----
+  const FD_LEN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64];
   async function readASC(text, progress) {
     const fr = new Frames();
     let hex = true, rel = false, last = 0;
@@ -156,9 +157,12 @@ const CanLog = (() => {
       };
       if (/^CANFD$/i.test(tk[1])) {
         // t CANFD ch Rx|Tx id [报文名] brs esi dlc 长度 数据...
-        const ch = +tk[2], dir = tk[3], id = pid(tk[4]);
+        // 也兼容某些记录仪的非标准写法：t CANFD ch id Rx|Tx brs esi d dlc(十进制) 长度 数据...
+        const swap = /^(rx|tx)$/i.test(tk[4]) && !/^(rx|tx)$/i.test(tk[3]);
+        const ch = +tk[2], dir = tk[swap ? 4 : 3], id = pid(tk[swap ? 3 : 4]);
         let k = 5;
         if (!/^[01]$/.test(tk[k])) k++;
+        if (swap && /^d$/i.test(tk[k + 2]) && FD_LEN[+tk[k + 3]] === +tk[k + 4]) k++;
         const n = parseInt(tk[k + 3], 10);
         if (id < 0 || !(n >= 0) || n > 64) continue;
         for (let i = 0; i < n; i++) b[i] = parseInt(tk[k + 4 + i], 16);
