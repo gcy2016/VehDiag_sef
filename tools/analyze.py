@@ -5,12 +5,12 @@
 依赖：pip install python-can openpyxl cryptography   （画图另需 matplotlib）
 用法：
   export VEHDIAG_SRC_KEY='原始文件密码'
-  python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利            # 概况 + 故障码 + 疑似异常信号
-  python tools/analyze.py 报文.blf --model A05大陆 --find 轮速 VehicleSpeed  # 搜索信号
-  python tools/analyze.py 报文.blf --model A05大陆 --sig ESP_VehicleSpeed IBCU_BrkSysFltLamp \\
+  python tools/analyze.py 报文.blf --model C363H                   # 概况 + 故障码 + 疑似异常信号
+  python tools/analyze.py 报文.blf --model C589P高配 --find 轮速 VehicleSpeed  # 搜索信号
+  python tools/analyze.py 报文.blf --model C589P高配 --sig ESP_VehicleSpeed IBCU_BrkSysFltLamp \\
          [--csv 输出.csv] [--plot 输出.png] [--t0 1.5 --t1 3]           # 信号统计 / 导出 / 画图
   python tools/analyze.py 报文.blf --dbc CIIA1.5_EV                       # 不指定车型，直接用某个 DBC
-  python tools/analyze.py 报文.blf --model A05大陆 --trace 700-7FF [--t0 --t1] # 报文列表（同网页“报文提取”），诊断报文附解释
+  python tools/analyze.py 报文.blf --model C589P高配 --trace 700-7FF [--t0 --t1] # 报文列表（同网页“报文提取”），诊断报文附解释
 """
 import argparse, glob, io, json, os, re, struct, sys
 from collections import Counter, OrderedDict
@@ -323,7 +323,7 @@ def main():
     ap = argparse.ArgumentParser(description='报文分析')
     ap.add_argument('log')
     ap.add_argument('--src-key', default=os.environ.get('VEHDIAG_SRC_KEY'))
-    ap.add_argument('--model', help='车型（Excel Sheet 名），决定 DBC 和诊断问卷')
+    ap.add_argument('--model', help='车型（项目代号如 C363H，或问卷 Sheet 名），决定 DBC 和诊断问卷')
     ap.add_argument('--dbc', help='直接指定 DBC 名，覆盖车型的默认 DBC')
     ap.add_argument('--find', nargs='+', metavar='关键词', help='搜索信号（名称 / 报文名 / 注释）')
     ap.add_argument('--sig', nargs='+', metavar='信号', help='输出这些信号的统计和变化')
@@ -336,11 +336,13 @@ def main():
     a = ap.parse_args()
     if not a.src_key:
         ap.error('需要原始文件密码 --src-key（或环境变量 VEHDIAG_SRC_KEY）')
+    if a.model:
+        a.model = build.market_name(a.model)
     dbcs, models = load_data(a.src_key)
     dbc_map = json.load(open(os.path.join(ROOT, 'tools', 'dbc_map.json'), encoding='utf-8'))
     model = models.get(a.model) if a.model else None
     if a.model and not model:
-        sys.exit('没有这个车型，可选：' + '、'.join(models))
+        sys.exit('没有这个车型，可选：' + '、'.join(f'{build.code_name(k)}（{k}）' for k in models))
     db = dbcs.get(a.dbc or (dbc_map.get(a.model) if a.model else ''))
 
     frames = read_log(a.log)
@@ -355,7 +357,7 @@ def main():
         best = max(dbcs, key=lambda k: sum(len(idx.get(msg_key(m), [])) for m in dbcs[k]['msgs']))
         print(f'未指定车型 / DBC，按覆盖率自动选用 {best}')
         db = dbcs[best]
-    print(f"使用 DBC：{db['name']}" + (f"；车型：{model['model']}" if model else '（未指定车型，不对照问卷）'))
+    print(f"使用 DBC：{db['name']}" + (f"；车型：{build.code_name(model['model'])}（{model['model']}）" if model else '（未指定车型，不对照问卷）'))
     known = {msg_key(m) for m in db['msgs']}
     unk = sorted(k for k in idx if k not in known)
     if unk:

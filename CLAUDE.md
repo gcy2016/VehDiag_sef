@@ -10,6 +10,23 @@
 | VehDiag_shr | Share 分享版 | 给有一定专业能力的人查看报文；只能看原始报文（另有 AI 助手），不带 DBC、不做解析；另有故障码查询（诊断问卷由使用者自己上传，同 GNL）。无密码 | https://gcy2016.github.io/VehDiag_shr/ |
 | VehDiag_gnl | General 通用版 | 功能和自用版一致，但仓库里只有代码，DBC、诊断问卷都由使用者自己上传。无密码 | https://gcy2016.github.io/VehDiag_gnl/ |
 
+## 车型：项目代号 ↔ 市场名
+SEF 网页按项目代号显示车型；用户在 SEF 里说项目代号。诊断问卷是通用的，Excel Sheet 名仍用市场名（以后新增也可能用市场名），映射记在 `tools/code_map.json`（build.py 生成网页时替换；analyze.py / aeb_response.py 的 `--model` 两种都认）。问卷新增车型时，在 `code_map.json` 里补上代号。
+
+| 项目代号 | 市场名 |
+|---|---|
+| C589 | 逸达 |
+| C589-1 | 三代逸动 |
+| C363大陆 / C363拿森 | 四代逸动大陆 / 四代逸动拿森 |
+| C363H | 四代逸动HEV伯特利 |
+| C363-1H | 四代逸动HEV拿森 |
+| C589P低配 | A05基础款 |
+| C589ICA1 | A05怀挡款 |
+| C589P高配 | A05大陆 |
+| C589E DY41 / C589E DY51 | 欧尚520DY41 / 欧尚520DY51 |
+
+公开版（PUB）仍显示市场名。
+
 ## 对话里分析报文
 用户会在对话里发来 blf / asc 报文并提问。处理方法：
 

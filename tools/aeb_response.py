@@ -11,7 +11,7 @@
 依赖：pip install python-can openpyxl cryptography
 用法：
   export VEHDIAG_SRC_KEY='原始文件密码'
-  python tools/aeb_response.py 报文目录或文件... --model 四代逸动HEV伯特利 [--out 结果.xlsx]
+  python tools/aeb_response.py 报文目录或文件... --model C363H [--out 结果.xlsx]
   可选：--active GW_244.ACC_AEBActive --target GW_244.ACC_AEBTargetDeceleration
         --accel GW_15D.ESP_LongAccel --speed IBCU_17A.ESP_VehicleSpeed   （“报文名.信号名”，信号名唯一时可省报文名）
 """
@@ -255,7 +255,7 @@ def main():
     ap = argparse.ArgumentParser(description='AEB 制动响应时间统计')
     ap.add_argument('logs', nargs='+', help='blf / asc 文件或目录（目录会递归查找）')
     ap.add_argument('--src-key', default=os.environ.get('VEHDIAG_SRC_KEY'))
-    ap.add_argument('--model', help='车型（决定 DBC）')
+    ap.add_argument('--model', help='车型（项目代号如 C363H，或市场名），决定 DBC')
     ap.add_argument('--dbc', help='直接指定 DBC 名')
     ap.add_argument('--active', default='GW_244.ACC_AEBActive')
     ap.add_argument('--target', default='GW_244.ACC_AEBTargetDeceleration')
@@ -270,9 +270,9 @@ def main():
         ap.error('需要原始文件密码 --src-key（或环境变量 VEHDIAG_SRC_KEY）')
     dbcs, _ = A.load_data(a.src_key)
     dbc_map = json.load(open(os.path.join(A.ROOT, 'tools', 'dbc_map.json'), encoding='utf-8'))
-    name = a.dbc or dbc_map.get(a.model or '')
+    name = a.dbc or dbc_map.get(A.build.market_name(a.model or ''))
     if name not in dbcs:
-        sys.exit('请用 --model 指定车型（可选：' + '、'.join(k for k in dbc_map if not k.startswith('_')) + '）或 --dbc 指定 DBC')
+        sys.exit('请用 --model 指定车型（可选：' + '、'.join(A.build.code_name(k) for k in dbc_map if not k.startswith('_')) + '）或 --dbc 指定 DBC')
     db, a.dbc_name = dbcs[name], name
     files = collect(a.logs)
     if not files:

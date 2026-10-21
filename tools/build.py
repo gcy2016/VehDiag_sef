@@ -14,6 +14,7 @@
 每个 Sheet 名即车型；读取 显示码 / 高中字节 / 低字节 / 故障描述 / 可能原因 / 维修建议。
 “描述”栏若为英文，按 tools/zh_map.json 译成中文，原文保留为 *_en。
 DBC（source/*.dbc.enc）按 tools/dbc_map.json 挂到各车型，只进加密版；公开版不含 DBC 和报文分析。
+加密版按 tools/code_map.json 把车型显示成项目代号（如 逸达 → C589），公开版仍用市场名。
 """
 import argparse, base64, glob, gzip, io, json, os, re, secrets
 import openpyxl
@@ -110,6 +111,18 @@ def open_file(blob: bytes, key: str) -> bytes:
         raise SystemExit('原始文件密码错误')
 
 
+def code_name(market):
+    """车型市场名 → 项目代号（tools/code_map.json），没登记的原样返回。"""
+    code_map = json.load(open(os.path.join(ROOT, 'tools', 'code_map.json'), encoding='utf-8'))
+    return code_map.get(market, market)
+
+
+def market_name(name):
+    """项目代号或市场名 → 市场名（问卷 Sheet 名 / dbc_map 的键）。"""
+    code_map = json.load(open(os.path.join(ROOT, 'tools', 'code_map.json'), encoding='utf-8'))
+    return next((k for k, v in code_map.items() if v == name and not k.startswith('_')), name)
+
+
 def page(mode):
     if mode == 'pub':     # 公开版沿用原页面
         return open(os.path.join(ROOT, 'tools', 'template_pub.html'), encoding='utf-8').read().replace('__MODE__', mode)
@@ -166,7 +179,8 @@ def main():
             m['dbc'] = dbc_map[m['model']]
         else:
             print('⚠ 车型没有对应的 DBC：', m['model'])
-    sef_payload = json.dumps({'models': models, 'dbcs': dbcs}, ensure_ascii=False, separators=(',', ':'))
+    sef_payload = json.dumps({'models': [dict(m, model=code_name(m['model'])) for m in models], 'dbcs': dbcs},
+                             ensure_ascii=False, separators=(',', ':'))
 
     if a.pin:
         assert re.fullmatch(r'\d{6}', a.pin), '密码必须是 6 位数字'

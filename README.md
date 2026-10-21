@@ -21,14 +21,14 @@
   - 报文提取（类似 CANalyzer Trace）：按 ID / 范围 / 报文名筛选；点选一行，DBC 报文显示各信号值，诊断报文说明 ISO-TP 帧类型并按通用诊断知识解释完整请求 / 应答（如 7F 负响应的否定码含义），知识表在 `tools/uds.json`
 - **AI 助手**：接入任意大模型（DeepSeek / 通义千问 / Kimi / 智谱 / 豆包 / OpenAI / Claude，或任意 OpenAI 兼容接口），使用者在“设置”里自备 API Key（只存在本机浏览器）。提问时自动附带网页整理好的当前数据（故障码与问卷解释、诊断过程、曲线窗口内的信号变化、选中的报文），发送前可查看修改；没有 Key 时可“📋 复制”粘贴到其他 AI 使用。代码在 `tools/web/ai.js`
 
-车型与 DBC 的对应见 `tools/dbc_map.json`：
+网页上车型按项目代号显示；诊断问卷是通用的，Sheet 名仍用市场名，对应关系见 `tools/code_map.json`。车型与 DBC 的对应见 `tools/dbc_map.json`：
 
-| DBC | 车型 |
+| DBC | 项目代号（市场名） |
 |---|---|
-| CIIA1.0_ICE | 逸达、三代逸动 |
-| CIIA1.5_ICE | 四代逸动大陆、四代逸动拿森 |
-| CIIA1.5_HEV_PHEV | 四代逸动HEV伯特利、四代逸动HEV拿森、A05基础款、A05怀挡款、A05大陆 |
-| CIIA1.5_EV | 欧尚520DY41、欧尚520DY51 |
+| CIIA1.0_ICE | C589（逸达）、C589-1（三代逸动） |
+| CIIA1.5_ICE | C363大陆（四代逸动大陆）、C363拿森（四代逸动拿森） |
+| CIIA1.5_HEV_PHEV | C363H（四代逸动HEV伯特利）、C363-1H（四代逸动HEV拿森）、C589P低配（A05基础款）、C589ICA1（A05怀挡款）、C589P高配（A05大陆） |
+| CIIA1.5_EV | C589E DY41（欧尚520DY41）、C589E DY51（欧尚520DY51） |
 
 网页要在浏览器里解析报文，所以 DBC 的信号定义和问卷一起放在 `docs/data.enc.json`（网站密码加密）；原始 DBC 文件只在 `source/` 里，用长密码加密。
 
@@ -36,7 +36,7 @@
 - `source/` 加密后的原始文件（Excel 每个 Sheet = 一个车型；`*.dbc.enc` 为 DBC）
 - `tools/build.py` 加解密与生成网页；`tools/template.html` 加密版页面；`tools/template_pub.html` 公开版页面（不含报文分析）
 - `tools/web/canlog.js` 报文读取、DBC 解码、故障码识别；`tools/web/plot.js` 曲线；`tools/web/ai.js` AI 助手；生成时内联进页面
-- `tools/dbc.py` DBC 解析；`tools/dbc_map.json` 车型 → DBC；`tools/zh_map.json` 英文描述的中文对照
+- `tools/dbc.py` DBC 解析；`tools/dbc_map.json` 车型 → DBC；`tools/code_map.json` 市场名 → 项目代号；`tools/zh_map.json` 英文描述的中文对照
 - `tools/analyze.py` 命令行报文分析（规则与网页相同，在对话里分析报文用）
 - `tools/aeb_response.py` AEB 制动响应时间统计：ACC_AEBActive 激活 → |ESP_LongAccel| 超过目标减速度的时间差，批量输出 Excel
 - `docs/` 生成的网站（GitHub Pages 发布这个目录）
@@ -55,11 +55,11 @@ Excel 里新增的英文描述，在 `tools/zh_map.json` 里补一条“英文: 
 
 命令行分析报文（另需 `pip install python-can`，画图需 `matplotlib`）：
 ```bash
-python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利                    # 概况、故障码（对照问卷）、疑似异常信号
-python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --find 轮速        # 搜索信号
-python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --sig ESP_VehicleSpeed --plot 曲线.png --csv 数据.csv
-python tools/analyze.py 报文.blf --model 四代逸动HEV伯特利 --trace 700-7FF          # 报文列表，诊断报文附解释
-python tools/aeb_response.py 报文目录/ --model 四代逸动HEV伯特利 --out AEB.xlsx      # AEB 制动响应时间统计（批量，输出 Excel）
+python tools/analyze.py 报文.blf --model C363H                    # 概况、故障码（对照问卷）、疑似异常信号
+python tools/analyze.py 报文.blf --model C363H --find 轮速        # 搜索信号
+python tools/analyze.py 报文.blf --model C363H --sig ESP_VehicleSpeed --plot 曲线.png --csv 数据.csv
+python tools/analyze.py 报文.blf --model C363H --trace 700-7FF          # 报文列表，诊断报文附解释
+python tools/aeb_response.py 报文目录/ --model C363H --out AEB.xlsx      # AEB 制动响应时间统计（批量，输出 Excel）
 ```
 
 ## 发布

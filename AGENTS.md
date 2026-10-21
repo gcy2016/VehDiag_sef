@@ -32,15 +32,15 @@ pip install python-can openpyxl cryptography matplotlib
 export VEHDIAG_SRC_KEY='向用户索取的原始文件密码'
 
 # 用户发来的报文先放到仓库外的独立目录，例如 ~/logs/
-python tools/analyze.py ~/logs/报文.blf --model 四代逸动HEV伯特利     # 概况 + 故障码 + 疑似异常信号
-python tools/analyze.py ~/logs/报文.blf --model 四代逸动HEV伯特利 --find 轮速 VehicleSpeed   # 搜索信号
-python tools/analyze.py ~/logs/报文.blf --model 四代逸动HEV伯特利 \
+python tools/analyze.py ~/logs/报文.blf --model C363H     # 概况 + 故障码 + 疑似异常信号
+python tools/analyze.py ~/logs/报文.blf --model C363H --find 轮速 VehicleSpeed   # 搜索信号
+python tools/analyze.py ~/logs/报文.blf --model C363H \
        --sig ESP_VehicleSpeed IBCU_BrkSysFltLamp --t0 1.5 --t1 3 --plot 曲线.png [--csv 数据.csv]
-python tools/analyze.py ~/logs/报文.blf --model 四代逸动HEV伯特利 --trace 700-7FF [--t0 --t1]   # 原始报文
+python tools/analyze.py ~/logs/报文.blf --model C363H --trace 700-7FF [--t0 --t1]   # 原始报文
 python tools/analyze.py ~/logs/报文.blf --dbc CIIA1.5_EV            # 不指定车型，直接用某个 DBC
 ```
 
-可用车型：逸达、三代逸动、四代逸动大陆、四代逸动拿森、四代逸动HEV伯特利、四代逸动HEV拿森、A05基础款、A05怀挡款、A05大陆、欧尚520DY41、欧尚520DY51。车型不明时先问用户。
+可用车型（项目代号，`--model` 也认括号里的市场名，对应关系见 `tools/code_map.json`）：C589（逸达）、C589-1（三代逸动）、C363大陆（四代逸动大陆）、C363拿森（四代逸动拿森）、C363H（四代逸动HEV伯特利）、C363-1H（四代逸动HEV拿森）、C589P低配（A05基础款）、C589ICA1（A05怀挡款）、C589P高配（A05大陆）、C589E DY41（欧尚520DY41）、C589E DY51（欧尚520DY51）。车型不明时先问用户。
 
 **建议的分析思路：** 先看概况和故障码，再根据用户描述的故障现象决定查哪些信号、哪段时间，必要时看原始诊断报文；`analyze.py` 不够用时，可以自己写脚本补充。回答时以问卷里的故障描述 / 可能原因 / 维修建议为准，再结合信号变化和汽车诊断通用知识给出排查思路。问卷只收录了制动控制模块，其他模块的故障码要说明“问卷未收录、仅按通用知识判断”。
 
