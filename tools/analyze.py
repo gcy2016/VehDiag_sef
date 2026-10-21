@@ -33,10 +33,37 @@ def dtc_text(b1, b2, b3):
 
 
 # ---------- 读报文 ----------
+FD_LEN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64]
+
+
+def fix_asc_line(s):
+    """把某些记录仪导出的非标准 CANFD 行改成 Vector 标准格式，其他行原样返回。
+    非标准：t CANFD ch id Rx|Tx brs esi d dlc(十进制) 长度 数据...
+    标准：  t CANFD ch Rx|Tx id brs esi dlc(十六进制) 长度 数据..."""
+    tk = s.split()
+    if len(tk) < 10 or tk[1].upper() != 'CANFD' or tk[4].upper() not in ('RX', 'TX') \
+            or tk[3].upper() in ('RX', 'TX'):
+        return s
+    tk[3], tk[4] = tk[4], tk[3]
+    if tk[7].lower() == 'd' and tk[8].isdigit() and tk[9].isdigit() \
+            and int(tk[8]) < 16 and FD_LEN[int(tk[8])] == int(tk[9]):
+        tk[7:9] = [f'{int(tk[8]):x}']
+    return ' '.join(tk) + '\n'
+
+
+def open_log(path):
+    import can
+    if not path.lower().endswith('.asc'):
+        return can.LogReader(path)
+    with open(path, encoding='latin-1') as f:
+        text = ''.join(fix_asc_line(s) for s in f)
+    return can.ASCReader(io.StringIO(text))
+
+
 def read_log(path):
     import can
     frames = []                                     # (t, key, ch, data)
-    with can.LogReader(path) as r:
+    with open_log(path) as r:
         for m in r:
             if not isinstance(m, can.Message) or m.is_error_frame or m.is_remote_frame:
                 continue
