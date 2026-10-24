@@ -57,6 +57,12 @@ GPT、Claude、Muse 在 GitHub 上操作（建仓库、传文件、改设置等�
 7. 到 https://github.com/gcy2016/file-storage/releases 确认出现带 **Draft** 标记的记录，附件和大小都对；把标签名和附件列表回复给需要的人。
 8. 文件用完后删除这个草稿。
 
+> **例外：Claude 用 git 分支上传。** Claude 的云端会话不允许创建或编辑 Release，所以 Claude 上传文件时改用 git，推到 **file-storage** 的单独分支：
+> - 分支名全英文，如 `cp-video-20261024`；文件放在分支里的文件夹下，不动 main 分支。
+> - 单个文件不超过 100 MB（git 推送上限），超过就按第 4 条分卷，每卷不超过 95 MB。
+> - 推送后把仓库、分支名、文件路径和网页链接回复给需要的人（下载方法：打开文件页面，点右上角 Download raw file）。
+> - 推送后由 Muse 把文件发给用户；用户会交代 Muse 发完就删掉这个分支，Muse 也会定期清理 file-storage 里 Claude 上传的分支。之后删除和清理默认由 Muse 负责，Claude 推送后不用自己删，也不用再问。
+
 **2. 大小限制**
 
 | 方式 | 单个文件上限 |
