@@ -48,13 +48,13 @@ GPT、Claude、Muse 在 GitHub 上操作（建仓库、传文件、改设置等�
 
 大文件（报文、视频、素材、安装包等）不要直接提交进仓库，统一用草稿 Release 的附件上传：
 
-1. 打开目标仓库的新建 Release 页面：`https://github.com/gcy2016/仓库名/releases/new`（没有特别指定时，传到私有仓库 **AI_Corp**；不要传到 VehDiag 系列等工作仓库）。
+1. 文件统一传到专门存文件的私有仓库 **file-storage**，打开它的新建 Release 页面：https://github.com/gcy2016/file-storage/releases/new 。不要传到 AI_Corp、VehDiag 系列等其他仓库（除非用户另外指定）。
 2. **Choose a tag**：输入新标签名（全英文，如 `data-20261024`），选 **Create new tag ... on publish**。
 3. **Release title**：简单写明内容。
 4. 在 **Attach binaries by dropping them here or selecting them** 处添加文件；**等每个文件都显示文件名和大小、进度条消失**后再继续。
 5. 下面的勾选框都不勾。
 6. 点 **Save draft**（灰色按钮），**不要点 Publish release**。草稿只有本账号能看到，发布后公开仓库里的附件所有人都能下载。
-7. 到 `https://github.com/gcy2016/仓库名/releases` 确认出现带 **Draft** 标记的记录，附件和大小都对；把标签名和附件列表回复给需要的人。
+7. 到 https://github.com/gcy2016/file-storage/releases 确认出现带 **Draft** 标记的记录，附件和大小都对；把标签名和附件列表回复给需要的人。
 8. 文件用完后删除这个草稿。
 
 **2. 大小限制**
