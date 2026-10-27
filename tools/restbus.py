@@ -184,20 +184,20 @@ def table_check(seqs, s, counters):
 
 # ---------- CAPL ----------
 CAPL_LIB = {
-    'crc8J1850': 'byte crc8J1850(byte d[], int start, int n)\n{\n  int i, k;\n  byte c;\n  c = 0xFF;\n'
-                 '  for (i = start; i < start + n; i++)\n  {\n    c = c ^ d[i];\n'
+    'crc8J1850': 'byte crc8J1850(byte d[], int ofs, int n)\n{\n  int i, k;\n  byte c;\n  c = 0xFF;\n'
+                 '  for (i = ofs; i < ofs + n; i++)\n  {\n    c = c ^ d[i];\n'
                  '    for (k = 0; k < 8; k++) { if (c & 0x80) c = (c << 1) ^ 0x1D; else c = c << 1; }\n  }\n'
                  '  return c ^ 0xFF;\n}\n',
-    'crc8H2F': 'byte crc8H2F(byte d[], int start, int n)\n{\n  int i, k;\n  byte c;\n  c = 0xFF;\n'
-               '  for (i = start; i < start + n; i++)\n  {\n    c = c ^ d[i];\n'
+    'crc8H2F': 'byte crc8H2F(byte d[], int ofs, int n)\n{\n  int i, k;\n  byte c;\n  c = 0xFF;\n'
+               '  for (i = ofs; i < ofs + n; i++)\n  {\n    c = c ^ d[i];\n'
                '    for (k = 0; k < 8; k++) { if (c & 0x80) c = (c << 1) ^ 0x2F; else c = c << 1; }\n  }\n'
                '  return c ^ 0xFF;\n}\n',
-    'chkXor': 'byte chkXor(byte d[], int start, int n)\n{\n  int i;\n  byte c;\n  c = 0;\n'
-              '  for (i = start; i < start + n; i++) c = c ^ d[i];\n  return c;\n}\n',
-    'chkSum': 'byte chkSum(byte d[], int start, int n)\n{\n  int i;\n  byte c;\n  c = 0;\n'
-              '  for (i = start; i < start + n; i++) c = c + d[i];\n  return c;\n}\n',
-    'crc16Ccitt': 'word crc16Ccitt(byte d[], int start, int n)\n{\n  int i, k;\n  word c;\n  c = 0xFFFF;\n'
-                  '  for (i = start; i < start + n; i++)\n  {\n    c = c ^ (d[i] << 8);\n'
+    'chkXor': 'byte chkXor(byte d[], int ofs, int n)\n{\n  int i;\n  byte c;\n  c = 0;\n'
+              '  for (i = ofs; i < ofs + n; i++) c = c ^ d[i];\n  return c;\n}\n',
+    'chkSum': 'byte chkSum(byte d[], int ofs, int n)\n{\n  int i;\n  byte c;\n  c = 0;\n'
+              '  for (i = ofs; i < ofs + n; i++) c = c + d[i];\n  return c;\n}\n',
+    'crc16Ccitt': 'word crc16Ccitt(byte d[], int ofs, int n)\n{\n  int i, k;\n  word c;\n  c = 0xFFFF;\n'
+                  '  for (i = ofs; i < ofs + n; i++)\n  {\n    c = c ^ (d[i] << 8);\n'
                   '    for (k = 0; k < 8; k++) { if (c & 0x8000) c = (c << 1) ^ 0x1021; else c = c << 1; }\n  }\n'
                   '  return c;\n}\n',
 }
@@ -349,7 +349,7 @@ def key_handler(spec, sims):
     get = f"getPhys(d{n}, {args}, {s['s']}, {s['f']}, {s['o']})"
     v = f'{get} {sign} {val}' if sign else f'{val}'
     unit = s['u']
-    body = f'  setPhys({phys}, {v});\n  write("{s["n"]} = %g {unit}", {get});'
+    body = f'  setPhys({phys}, {v});\n  write("{s["n"]} = %f {unit}", {get});'
     desc = f"{s['n']} {'加' if sign == '+' else '减' if sign == '-' else '设为'} {val:g}"
     return {'key': key, 'body': body, 'desc': desc}
 
