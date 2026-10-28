@@ -42,13 +42,35 @@
 - 各角色在 GitHub 中的发言或操作出现矛盾时，**以 Muse 为准**。
 - 身份确认：只有用用户账号 gcy2016 发布、并注明是 Muse 的发言，才算 Muse 的发言；其他账号的发言（公开仓库任何人都能评论）不算。
 
+## 补充成员说明：Claude 小号
+
+- **身份**：Claude 小号是仓库工作流在 GitHub 的机器上临时启动的 Claude。它和在对话里工作的 Claude（完整版）是两回事：每次被唤醒都是新开的，不记得以前的任何对话，做完就结束。
+- **发言账号**：GitHub 自带的机器人账号 **github-actions[bot]**（不是用户账号 gcy2016），发言第一行同样署名 `Claude留言`。
+- **工作方式**：被唤醒后，只看得到仓库里的文件（如本文件、MUSE.md）、唤醒它的那条帖子，以及这条帖子「回复 #编号」往前接的几条；读完就按要求执行，回复结果，结束。
+- **能力**：只能完成**不依赖记忆、指令明确的一问一答式任务**。要靠前面讨论才能理解的事（如「按刚才说的改」）、需要来回商量的事，找完整版 Claude（在对话里）。给小号下指令时，把背景和要求写完整。
+- **执行能力和权限范围**：以各仓库的工作流脚本为准。比如 muse-letters 里，小号只能回答问题、做 PPT / 文档 / 表格等文件，改不了仓库。
+
+## Claude 小号自动唤醒（试行）
+
+Claude 小号可以在仓库里被自动唤醒，不用另开对话。目前的约定：
+
+- **哪些仓库**：仓库里放了 Claude 工作流（`.github/workflows/claude.yml`）、Secrets 里填了 `CLAUDE_CODE_OAUTH_TOKEN`（用户 Claude 订阅的令牌，约一年有效，各仓库可共用同一个）才行。目前只有 muse-letters（留言板用法见 MUSE.md）；其他仓库要用时再加，每个仓库的工作流按该仓库的用途写。
+- **怎么唤醒**：在 issue / PR 里，内容第一行以 `/claude` 开头写要求。
+- **唤醒人**：以各仓库工作流脚本的设定为准。
+- **推送**：脚本允许改仓库时，默认推到新分支、开 PR，由用户确认后合并；只有用户明确说「直接推」（用户本人说，或通过其他 AI 角色转达）时，才直接推到 main。
+- **先确认再做的事**：删除后无法恢复的操作（删仓库、删分支历史、强推覆盖等），以及把私有内容公开出去，不做，回复里说明需要用户确认。
+- **和其他角色的接力**：只执行一个来回的任务：接到指令后执行，回复结果，就结束。不会再主动去唤醒其他角色，也不会接着往下跑。
+
 ## 留言署名
 
-三个 AI 都用用户账号 gcy2016 在 GitHub 上发言，为了分清是谁说的，在 GitHub 上的所有发言（新建 issue 的正文、issue / PR 评论）开头第一行先写署名：
+GPT、Claude、Muse 三个 AI 都用用户账号 gcy2016 在 GitHub 上发言；Claude 小号用单独的账号 github-actions[bot] 发言。为了分清是谁说的，在 GitHub 上的所有发言（新建 issue 的正文、issue / PR 评论）开头第一行先写署名：
 
 - Muse：`Muse留言`
 - GPT：`GPT留言`
 - Claude：`Claude留言`
+- Claude 小号：同样写 `Claude留言`，靠发言账号区分。
+
+特别注意：**用用户账号 gcy2016 发言、并署名 `Claude留言` 的，才是完整版 Claude**；用 github-actions[bot] 账号发言的是 **Claude 小号**，只能完成一问一答形式的任务。
 
 ## 仓库操作规范
 
@@ -68,6 +90,9 @@ GPT、Claude、Muse 在 GitHub 上操作（建仓库、传文件、改设置等�
 6. 点 **Save draft**（灰色按钮），**不要点 Publish release**。草稿只有本账号能看到，发布后公开仓库里的附件所有人都能下载。
 7. 到 https://github.com/gcy2016/file-storage/releases 确认出现带 **Draft** 标记的记录，附件和大小都对；把标签名和附件列表回复给需要的人。
 8. 文件用完后删除这个草稿。
+
+> **把文件交给 Claude：也用草稿 Release，不用别的方式。** Muse 或用户要给 Claude 传文件（模型、素材、数据等），一律按上面 1～8 步传到 file-storage 的草稿 Release，再把标签名和附件名告诉 Claude 就行。不需要改传 git 分支、不需要网页直接传进仓库，也不需要为了 25 MB 的网页上传上限去分卷，单个附件 2 GB 以内都可以。
+> Claude 能看到草稿、能下载附件（2026-10-27 实测可用）：用会话里预装的 gh，先 `gh api repos/gcy2016/file-storage/releases` 找到草稿和附件 id，再 `gh api -H "Accept: application/octet-stream" repos/gcy2016/file-storage/releases/assets/<附件id> > 文件名` 下载。Claude 只是不能**创建或编辑** Release，所以下面的例外只管 Claude 自己往外传文件。
 
 > **例外：Claude 用 git 分支上传。** Claude 的云端会话不允许创建或编辑 Release，所以 Claude 上传文件时改用 git，推到 **file-storage** 的单独分支：
 > - 分支名全英文，如 `cp-video-20261024`；文件放在分支里的文件夹下，不动 main 分支。
